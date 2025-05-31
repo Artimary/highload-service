@@ -34,7 +34,7 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Restore dependencies
-        run: dotnet restore
+        run: dotnet restore ParkingApi/src/ParkingApi.csproj
 
       - name: Build application
         run: dotnet build --no-restore --configuration Release

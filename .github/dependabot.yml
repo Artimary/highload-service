@@ -25,10 +25,9 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "Microsoft.AspNetCore*"
         update-types: ["version-update:semver-major"]
-
   # Enable version updates for Docker
   - package-ecosystem: "docker"
-    directory: "/"
+    directory: "/ParkingApi/src"
     schedule:
       interval: "weekly"
       day: "tuesday"
