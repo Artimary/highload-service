@@ -35,7 +35,7 @@ updates:
       timezone: "UTC"
     open-pull-requests-limit: 5
     reviewers:
-      - "your-github-username"
+      - "Artimary"
     commit-message:
       prefix: "chore"
       include: "scope"
@@ -53,7 +53,7 @@ updates:
       timezone: "UTC"
     open-pull-requests-limit: 5
     reviewers:
-      - "your-github-username"
+      - "Artimary"
     commit-message:
       prefix: "chore"
       include: "scope"

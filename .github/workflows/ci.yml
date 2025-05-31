@@ -63,7 +63,7 @@ jobs:
             ${{ runner.os }}-nuget-
 
       - name: Restore dependencies
-        run: dotnet restore
+        run: dotnet restore ParkingApi/src/ParkingApi.csproj
 
       - name: Build solution
         run: dotnet build --no-restore --configuration Release
