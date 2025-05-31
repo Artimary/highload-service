@@ -110,15 +110,32 @@ jobs:
           "
 
       - name: Run unit tests
+        env:
+          ConnectionStrings__PostgreSQL: "Host=localhost;Port=5432;Database=parking_test;Username=postgres;Password=postgres"
+          ConnectionStrings__InfluxDB: "http://localhost:8086"
+          InfluxDB__Token: "test-token-123"
+          InfluxDB__Org: "test-org"
+          InfluxDB__Bucket: "iot_bucket"
         run: dotnet test ParkingApi/tests/ParkingApi.IntegrationTests --configuration Release --verbosity normal --filter "Category!=Integration"
 
       - name: Run integration tests
         env:
           ASPNETCORE_ENVIRONMENT: Integration
           DOTNET_ENVIRONMENT: Integration
+          ConnectionStrings__PostgreSQL: "Host=localhost;Port=5432;Database=parking_test;Username=postgres;Password=postgres"
+          ConnectionStrings__InfluxDB: "http://localhost:8086"
+          InfluxDB__Token: "test-token-123"
+          InfluxDB__Org: "test-org"
+          InfluxDB__Bucket: "iot_bucket"
         run: dotnet test ParkingApi/tests/ParkingApi.IntegrationTests --configuration Release --verbosity normal --filter "Category=Integration"
 
       - name: Generate test coverage report
+        env:
+          ConnectionStrings__PostgreSQL: "Host=localhost;Port=5432;Database=parking_test;Username=postgres;Password=postgres"
+          ConnectionStrings__InfluxDB: "http://localhost:8086"
+          InfluxDB__Token: "test-token-123"
+          InfluxDB__Org: "test-org"
+          InfluxDB__Bucket: "iot_bucket"
         run: |
           dotnet test ParkingApi/tests/ParkingApi.IntegrationTests --configuration Release \
             --collect:"XPlat Code Coverage" \

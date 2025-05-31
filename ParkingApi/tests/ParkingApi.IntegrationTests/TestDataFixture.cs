@@ -20,6 +20,7 @@ namespace ParkingApi.IntegrationTests
         {
             var config = new ConfigurationBuilder()
                 .AddJsonFile("appsettings.Integration.json")
+                .AddEnvironmentVariables()
                 .Build();
 
             _postgresConnectionString = config.GetConnectionString("PostgreSQL") ?? throw new InvalidOperationException("PostgreSQL connection string not found");
