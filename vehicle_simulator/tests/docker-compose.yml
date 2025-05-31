@@ -1,0 +1,72 @@
+version: "3.8"
+
+services:
+  postgresql:
+    image: postgres:latest
+    container_name: test-postgresql
+    environment:
+      POSTGRES_PASSWORD: secret
+      POSTGRES_USER: postgres
+      POSTGRES_DB: parking
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mosquitto:
+    image: eclipse-mosquitto:latest
+    container_name: test-mosquitto
+    ports:
+      - "1883:1883"
+    volumes:
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-log:/mosquitto/log
+      - ./tests/mosquitto/conf/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+
+  iot-controller-test:
+    build:
+      context: .
+      dockerfile: tests/unit/iot-controller-test/Dockerfile
+    container_name: iot-controller-test
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      PGHOST: postgresql
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: yourpassword
+      PGDATABASE: postgres
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+
+  data-simulator-test:
+    build:
+      context: .
+      dockerfile: tests/integration/data-simulator-test/Dockerfile
+    container_name: data-simulator-test
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      PGHOST: postgresql
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: yourpassword
+      PGDATABASE: postgres
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+
+volumes:
+  pgdata:
+  mosquitto-data:
+  mosquitto-log:

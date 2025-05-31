@@ -1,0 +1,36 @@
+# .NET Core
+bin/
+obj/
+net9.0/
+*.user
+
+# Build results
+x64/
+x86/
+
+# Visual Studio files
+.vs/
+.vscode/
+*.ntvs*
+*.njsproj
+*.sln.docstates
+
+# Database
+*.mdf
+*.ldf
+*.ndf
+
+# Grafana & Monitoring
+grafana/data/
+influxdb/data/
+prometheus/data/
+mosquitto/data/
+mosquitto/log/
+postgresql/data/
+
+# Logs
+*.log
+logs
+
+# Scripts
+*.ps1

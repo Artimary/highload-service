@@ -1,0 +1,231 @@
+version: "3.9"
+
+services:
+  # MQTT Broker
+  mosquitto:
+    image: eclipse-mosquitto
+    container_name: mosquitto
+    # env_file:
+    #   - .env
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/var/log/mosquitto
+    networks:
+      - iot-network
+    ports:
+      - 1883:1883
+      # - 9001:9001
+
+  # InfluxDB
+  influxdb:
+    container_name: influxdb
+    image: influxdb
+    ports:
+      - "8086:8086"
+    volumes:
+      - ./influxdb/data:/var/lib/influxdb2
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=admin123
+      - DOCKER_INFLUXDB_INIT_ORG=iot_org
+      - DOCKER_INFLUXDB_INIT_BUCKET=iot_bucket
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=super-secret-token
+    networks:
+      - iot-network
+
+  # Grafana
+  grafana:
+    container_name: grafana
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    depends_on:
+      - loki
+      - influxdb
+    networks:
+      - iot-network
+      - loki-network
+
+  # Data Simulator
+  data_simulator:
+    container_name: data_simulator
+    image: python:3.9-slim
+    volumes:
+      - ./data_simulator/src:/app
+    working_dir: /app
+    command: sh -c "pip install -r requirements.txt && python data_simulator.py"
+    environment:
+      - MQTT_HOST=mosquitto
+    depends_on:
+      - mosquitto
+    networks:
+      - iot-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "10"
+
+  vehicle_simulator:
+    container_name: vehicle_simulator
+    image: python:3.9-slim
+    volumes:
+      - ./vehicle_simulator:/app
+    working_dir: /app
+    command: sh -c "pip install -r requirements.txt && python vehicle_simulator.py"
+    environment:
+      - API_URL="http://api:8080"
+    depends_on:
+      - api
+    networks:
+      - iot-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "10"
+
+  # IoT Controller
+  iot-controller:
+    build:
+      context: ./iot_controller/src
+    image: iot-controller
+    container_name: iot-controller
+    depends_on:
+      - mosquitto
+      - influxdb
+    environment:
+      - MQTT_HOST=mosquitto
+      - INFLUXDB_URL=http://influxdb:8086
+      - INFLUXDB_TOKEN=super-secret-token
+      - INFLUXDB_ORG=iot_org
+      - INFLUXDB_BUCKET=iot_bucket
+    networks:
+      - iot-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "10"
+    # ports:
+    # - "5000:5000"
+    # restart: always
+
+  # Rule Engine
+  rule_engine:
+    container_name: rule_engine
+    build:
+      context: ./rule_engine
+    environment:
+      - MQTT_HOST=mosquitto
+      - INFLUXDB_URL=http://influxdb:8086
+      - INFLUXDB_TOKEN=super-secret-token
+      - INFLUXDB_ORG=iot_org
+      - INFLUXDB_BUCKET=rule_engine_bucket
+    networks:
+      - iot-network
+    depends_on:
+      - mosquitto
+      - influxdb
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "10"
+  promtail:
+    image: grafana/promtail:latest
+    volumes:
+      - ./promtail-config.yaml:/etc/promtail/config.yml
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - iot-network
+      - loki-network
+
+  loki:
+    image: grafana/loki:latest
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki-config.yaml:/etc/loki/local-config.yaml
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - loki-network
+
+  postgresql:
+    image: postgres:latest
+    container_name: postgresql
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: parking
+    volumes:
+      - ./postgresql/data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - iot-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "10"
+  api:
+    build:
+      context: ./ParkingApi/src
+      dockerfile: Dockerfile
+    container_name: api
+    command: dotnet ParkingApi.dll
+    ports:
+      - "8000:8000"
+    depends_on:
+      - influxdb
+      - postgresql
+    environment:
+      - INFLUXDB_URL=http://influxdb:8086
+      - INFLUXDB_TOKEN=super-secret-token
+      - INFLUXDB_ORG=iot_org
+      - INFLUXDB_BUCKET=iot_bucket
+      - POSTGRES_HOST=postgresql
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=parking
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=secret
+      - ASPNETCORE_URLS=http://+:8000
+    networks:
+      - iot-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "10"
+
+  # redis:
+  #   image: redis:latest
+  #   container_name: redis
+  #   networks:
+  #     - iot-network
+
+  # nginx:
+  #   image: nginx:latest
+  #   container_name: nginx
+  #   ports:
+  #     - "80:80"
+  #   volumes:
+  #     - ./nginx.conf:/etc/nginx/nginx.conf
+  #   depends_on:
+  #     - api_service
+  #   networks:
+  #     - iot-network
+
+networks:
+  iot-network:
+    driver: bridge
+  loki-network:
+    driver: bridge

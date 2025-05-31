@@ -1,0 +1,26 @@
+groups:
+- name: system-alerts
+  rules:
+  - alert: HighCPUUsage
+    expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "CPU usage >80% (instance {{ $labels.instance }})"
+
+  - alert: HighMemoryUsage
+    expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 > 75
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Memory usage >75% (instance {{ $labels.instance }})"
+
+  - alert: ServiceDown
+    expr: up == 0
+    for: 30s
+    labels:
+      severity: critical
+    annotations:
+      summary: "Сервис {{ $labels.job }} недоступен"

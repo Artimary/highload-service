@@ -1,0 +1,12 @@
+route:
+  receiver: default-email
+  group_by: [alertname]
+
+receivers:
+- name: default-email
+  email_configs:
+  - to: ap-ip@outlook.com
+    from: alertmanager@example.com
+    smarthost: smtp.example.com:587
+    auth_username: "user"
+    auth_password: "password"
