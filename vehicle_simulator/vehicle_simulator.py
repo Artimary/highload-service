@@ -11,7 +11,7 @@ class Vehicle:
         self.vehicle_id = vehicle_id
 
     def release_spot(self, booking_id, parking_id, spot_number, delay, use_delete=True):
-        time.sleep(delay)  # Задержка 5–15 минут
+        time.sleep(50)  # Задержка 5–15 минут
         try:
             if use_delete:
                 # Используем DELETE для полного удаления бронирования
@@ -84,7 +84,7 @@ class Vehicle:
                     print(f"{self.vehicle_id}: Error: {e}, Response: {e.response.text}")
                 else:
                     print(f"{self.vehicle_id}: Error: {e}")
-            time.sleep(random.uniform(10, 20))
+            time.sleep(random.uniform(100, 500))
 
 def vehicle_task(vehicle):
     vehicle.run()
