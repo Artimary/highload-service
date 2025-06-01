@@ -5,6 +5,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ParkingApi.Services;
+using ParkingApi.Middleware;
+using Prometheus;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,6 +19,12 @@ if (Environment.GetEnvironmentVariable("INTEGRATION_TEST") == "TRUE")
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+// Add caching services
+builder.Services.AddMemoryCache();
+
+// Add Prometheus metrics services
+builder.Services.AddHealthChecks();
 
 // Configure services to read from configuration
 builder.Services.AddSingleton<InfluxDbService>(sp =>
@@ -49,6 +57,14 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseRouting();
+
+// Add advanced metrics middleware before Prometheus
+app.UseMiddleware<AdvancedMetricsMiddleware>();
+
+// Enable Prometheus metrics
+app.UseHttpMetrics();
+app.MapMetrics();
+
 app.MapControllers();
 
 app.Run();

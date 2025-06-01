@@ -113,7 +113,23 @@ public class ParkingController : ControllerBase
                     double distance = Math.Sqrt(Math.Pow(lot.Lat - lat.Value, 2) + Math.Pow(lot.Lon - lon.Value, 2)) * 111000;
                     return distance <= radius.Value;
                 }).ToList();
-            }
+            }            // Calculate and record business metrics
+            var totalSpots = parkingLots.Sum(p => p.FreeSpots + 5); // Assuming each lot has ~5 occupied + free spots
+            var totalFreeSpots = parkingLots.Sum(p => p.FreeSpots);
+            var occupiedSpots = totalSpots - totalFreeSpots;
+
+            // Record business metrics asynchronously
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _influxDbService.WriteBusinessMetricsAsync(totalSpots, totalFreeSpots, occupiedSpots, "default");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to write business metrics");
+                }
+            });
 
             _logger.LogInformation($"Returning parking lots: {parkingLots.Count}");
             return Ok(parkingLots);
