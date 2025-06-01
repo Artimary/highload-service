@@ -1,0 +1,42 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    orgId: 1
+    url: http://prometheus:9090
+    basicAuth: false
+    isDefault: true
+    version: 1
+    editable: false
+    
+  - name: Loki
+    type: loki
+    access: proxy
+    orgId: 1
+    url: http://loki:3100
+    basicAuth: false
+    isDefault: false
+    version: 1
+    editable: false
+    
+  - name: InfluxDB
+    type: influxdb
+    access: proxy
+    orgId: 1
+    url: http://influxdb:8086
+    basicAuth: false
+    isDefault: false
+    version: 1
+    editable: false
+    database: iot_bucket
+    user: admin
+    password: adminpass
+    jsonData:
+      version: Flux
+      organization: iot_org
+      defaultBucket: iot_bucket
+      tlsSkipVerify: true
+    secureJsonData:
+      token: super-secret-token

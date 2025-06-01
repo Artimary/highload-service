@@ -34,7 +34,6 @@ services:
       - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=super-secret-token
     networks:
       - iot-network
-
   # Grafana
   grafana:
     container_name: grafana
@@ -42,9 +41,12 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - ./grafana/data:/var/lib/grafana
+      - ./monitoring/grafana/data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
     depends_on:
       - loki
       - influxdb
