@@ -1,16 +1,19 @@
 FROM python:3.9-slim
 
-# Копируем всю папку src в контейнер в /src
-COPY src/iot_controller /src/iot_controller
+# Copy source code to proper module structure
+COPY iot_controller/src/iot_controller.py /src/iot_controller/iot_controller.py
+COPY iot_controller/src/__init__.py /src/iot_controller/__init__.py
 
 WORKDIR /app
 
-COPY tests/unit/iot-controller-test/requirements.txt .
+# Copy requirements and install dependencies
+COPY iot_controller/tests/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY tests/unit/iot-controller-test/iot-controller-test.py .
+# Copy test file
+COPY iot_controller/tests/iot-controller-test.py .
 
-# Устанавливаем PYTHONPATH, чтобы можно было импортировать модули из /src
+# Set environment variables
 ENV PYTHONPATH=/src
 
-CMD ["python", "iot-controller-test.py"]
+CMD ["python", "-m", "unittest", "iot-controller-test.py"]

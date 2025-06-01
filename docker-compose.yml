@@ -64,6 +64,7 @@ services:
       - MQTT_HOST=mosquitto
     depends_on:
       - mosquitto
+      - postgresql
     networks:
       - iot-network
     logging:

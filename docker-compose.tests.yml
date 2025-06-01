@@ -32,6 +32,46 @@ services:
     networks:
       - test-network
 
+  mosquitto-test:
+    image: eclipse-mosquitto:2.0
+    ports:
+      - "1884:1883"
+    volumes:
+      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf
+    networks:
+      - test-network
+
+  data-simulator-test:
+    build:
+      context: .
+      dockerfile: data_simulator/tests/Dockerfile
+    depends_on:
+      - postgres-test
+      - mosquitto-test
+    environment:
+      - MQTT_HOST=mosquitto-test
+      - POSTGRES_HOST=postgres-test
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=parking_test
+    networks:
+      - test-network
+
+  iot-controller-test:
+    build:
+      context: .
+      dockerfile: iot_controller/tests/Dockerfile
+    depends_on:
+      - influxdb-test
+      - mosquitto-test
+    environment:
+      - MQTT_HOST=mosquitto-test
+      - INFLUXDB_URL=http://influxdb-test:8086
+      - INFLUXDB_TOKEN=my-super-secret-auth-token
+      - INFLUXDB_ORG=test-org
+    networks:
+      - test-network
+
 volumes:
   postgres-test-data:
   influxdb-test-data:

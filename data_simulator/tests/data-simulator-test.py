@@ -46,9 +46,7 @@ class UnitTestDataSimulator(unittest.TestCase):
         self.assertTrue(any("Reconnection failed" in message for message in cm.output))
         self.assertEqual(mock_client.reconnect.call_count, 2)
         mock_sleep.assert_called_once_with(5)
-        logger.info("test_on_disconnect_reconnect passed")
-
-    @mock.patch('data_simulator.data_simulator.data_simulator_client')
+        logger.info("test_on_disconnect_reconnect passed")    @mock.patch('data_simulator.data_simulator.data_simulator_client')
     @mock.patch('data_simulator.data_simulator.pg_conn')
     def test_free_spots_calculation_and_publish(self, mock_pg_conn, mock_client):
         mock_cursor = mock.MagicMock()

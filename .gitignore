@@ -4,6 +4,11 @@ obj/
 net9.0/
 *.user
 
+# Python
+data_simulator/src/__pycache__
+data_simulator/tests/__pycache__
+.venv/
+
 # Build results
 x64/
 x86/

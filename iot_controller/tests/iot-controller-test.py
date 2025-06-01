@@ -1,6 +1,7 @@
 import unittest
 from unittest import mock
 from iot_controller.iot_controller import validate_data, on_message, on_connect, on_disconnect, setup_mqtt, write_api, logger
+import time
 
 class TestValidateData(unittest.TestCase):
     def test_valid_integer(self):
@@ -31,8 +32,9 @@ class TestOnMessage(unittest.TestCase):
         message.payload.decode.return_value = '{"device_id": "dev1", "free_spots": 5, "timestamp": 1234567890}'
         mock_client = mock.MagicMock()
         mock_client.publish = mock.MagicMock()
-        mock_write_api.write = mock.MagicMock()
+        
         on_message(mock_client, None, message)
+        
         mock_client.publish.assert_called_once_with("rule_engine_topic", '{"device_id": "dev1", "free_spots": 5}')
         mock_write_api.write.assert_called_once_with(bucket="iot_bucket", record=mock.ANY)
 
@@ -73,7 +75,7 @@ class TestOnConnect(unittest.TestCase):
         mock_client.subscribe.assert_not_called()
 
 class TestOnDisconnect(unittest.TestCase):
-    @mock.patch('iot_controller.iot_controller.time.sleep')
+    @mock.patch('time.sleep')
     def test_successful_reconnect(self, mock_sleep):
         mock_client = mock.MagicMock()
         mock_client.reconnect = mock.MagicMock(return_value=None)
@@ -81,7 +83,7 @@ class TestOnDisconnect(unittest.TestCase):
         mock_client.reconnect.assert_called_once()
         mock_sleep.assert_not_called()
 
-    @mock.patch('iot_controller.iot_controller.time.sleep')
+    @mock.patch('time.sleep')
     def test_failed_reconnect(self, mock_sleep):
         mock_client = mock.MagicMock()
         mock_client.reconnect = mock.MagicMock(side_effect=[Exception("fail"), None])
@@ -101,7 +103,7 @@ class TestSetupMQTT(unittest.TestCase):
         self.assertEqual(mock_instance.on_message, on_message)
         self.assertEqual(mock_instance.on_connect, on_connect)
         self.assertEqual(mock_instance.on_disconnect, on_disconnect)
-        mock_instance.connect.assert_called_with('mosquitto', 1883)
+        mock_instance.connect.assert_called_with('mosquitto-test', 1883)
         mock_instance.subscribe.assert_called_with('iot_topic')
 
     @mock.patch('paho.mqtt.client.Client')

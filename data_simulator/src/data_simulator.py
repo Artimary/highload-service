@@ -4,15 +4,27 @@ import random
 import logging
 import json
 import psycopg2
+import os
 
-MQTT_HOST = 'mosquitto'
+MQTT_HOST = os.getenv('MQTT_HOST', 'mosquitto')
 MQTT_PORT = 1883
 MQTT_TOPIC = 'iot_topic'
+
+# Database configuration from environment variables
+POSTGRES_HOST = os.getenv('POSTGRES_HOST', 'postgresql')
+POSTGRES_USER = os.getenv('POSTGRES_USER', 'postgres')
+POSTGRES_PASSWORD = os.getenv('POSTGRES_PASSWORD', 'secret')
+POSTGRES_DB = os.getenv('POSTGRES_DB', 'parking')
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-pg_conn = psycopg2.connect(dbname="parking", user="postgres", password="secret", host="postgresql")
+pg_conn = psycopg2.connect(
+    dbname=POSTGRES_DB, 
+    user=POSTGRES_USER, 
+    password=POSTGRES_PASSWORD, 
+    host=POSTGRES_HOST
+)
 
 logger.info("Data simulator started.")
 
@@ -41,8 +53,8 @@ def init_parking_lots():
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS parking_lots (
                     id SERIAL PRIMARY KEY,
-                    latitude FLOAT NOT NULL,
-                    longitude FLOAT NOT NULL,
+                    lat FLOAT NOT NULL,
+                    lon FLOAT NOT NULL,
                     total_spots INTEGER
                 )
             """)
@@ -63,7 +75,7 @@ def init_parking_lots():
                     lon = random.uniform(30.2, 30.4)
                     total_spots = random.randint(10, 50)
                     cur.execute(
-                        "INSERT INTO parking_lots (id, latitude, longitude, total_spots) VALUES (%s, %s, %s, %s)",
+                        "INSERT INTO parking_lots (id, lat, lon, total_spots) VALUES (%s, %s, %s, %s)",
                         (device_id, lat, lon, total_spots)
                     )
                 elif row[0] is None:

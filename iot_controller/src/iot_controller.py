@@ -4,16 +4,21 @@ from influxdb_client.client.write_api import SYNCHRONOUS
 import json
 import logging
 import time
+import os
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-MQTT_HOST = 'mosquitto' 
+MQTT_HOST = os.getenv('MQTT_HOST', 'mosquitto')
 MQTT_PORT = 1883
 MQTT_TOPIC = 'iot_topic'
 
-# InfluxDB connection
-influx_client = InfluxDBClient(url="http://influxdb:8086", token="super-secret-token", org="iot_org")
+# InfluxDB connection from environment variables
+INFLUXDB_URL = os.getenv('INFLUXDB_URL', 'http://influxdb:8086')
+INFLUXDB_TOKEN = os.getenv('INFLUXDB_TOKEN', 'super-secret-token')
+INFLUXDB_ORG = os.getenv('INFLUXDB_ORG', 'iot_org')
+
+influx_client = InfluxDBClient(url=INFLUXDB_URL, token=INFLUXDB_TOKEN, org=INFLUXDB_ORG)
 query_api = influx_client.query_api()
 write_api = influx_client.write_api(write_options=SYNCHRONOUS)
 
