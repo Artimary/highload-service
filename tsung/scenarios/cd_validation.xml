@@ -42,30 +42,28 @@
       
       <thinktime value="1" random="true"/>
       
-      <!-- Get parking spots -->
+      <!-- Get parkings -->
       <request>
-        <http url="/api/parking-spots" method="GET"/>
+        <http url="/parking/status" method="GET"/>
       </request>
       
       <thinktime value="1" random="true"/>
       
-      <!-- Get parking statistics -->
+      <!-- Check parking status with location parameters (realistic use case) -->
       <request>
-        <http url="/api/parking-spots/statistics" method="GET"/>
+        <http url="/parking/status?lat=59.9343&amp;lon=30.3351&amp;radius=1000" method="GET"/>
       </request>
       
-      <thinktime value="2" random="true"/>
-      
-      <!-- Create a parking spot -->
+      <!-- Book a parking spot -->
       <request>
-        <http url="/api/parking-spots" method="POST" contents='{"location":"Test Location","capacity":10}' content_type="application/json"/>
+        <http url="/parking/1/book" method="POST" contents='{"vehicleId":"TSUNG_%%_ts_user_server:get_unique_id()%%","spotNumber":%%_os:system_time() rem 10 + 1%%}' content_type="application/json"/>
       </request>
       
       <thinktime value="1" random="true"/>
       
       <!-- Get updated list -->
       <request>
-        <http url="/api/parking-spots" method="GET"/>
+        <http url="/parking/status" method="GET"/>
       </request>
       
     </session>

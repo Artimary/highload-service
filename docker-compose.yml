@@ -179,6 +179,15 @@ services:
       options:
         max-size: "10m"
         max-file: "10"
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1G
+        reservations:
+          cpus: "1"
+          memory: 0.5G
+
   api:
     build:
       context: ./ParkingApi/src
@@ -208,7 +217,14 @@ services:
       options:
         max-size: "10m"
         max-file: "10"
-
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2G
+        reservations:
+          cpus: "1"
+          memory: 1G
   # redis:
   #   image: redis:latest
   #   container_name: redis

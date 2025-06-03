@@ -14,17 +14,17 @@
 
   <!-- Scenario: Few users with high request frequency -->
   <load>
-    <!-- Phase 1: Quick ramp up - 50 users in 2 minutes -->
+    <!-- Phase 1: -->
     <arrivalphase phase="1" duration="1" unit="minute">
       <users interarrival="2" unit="second"/>
     </arrivalphase>
     
-    <!-- Phase 2: Intensive load - 100 users over 20 minutes -->
+    <!-- Phase 2: -->
     <arrivalphase phase="2" duration="1" unit="minute">
       <users interarrival="3" unit="second"/>
     </arrivalphase>
     
-    <!-- Phase 3: Cool down - 25 users over 3 minutes -->
+    <!-- Phase 3: -->
     <arrivalphase phase="3" duration="1" unit="minute">
       <users interarrival="5" unit="second"/>
     </arrivalphase>
