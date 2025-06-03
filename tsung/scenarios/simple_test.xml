@@ -34,7 +34,7 @@
         <http url="/health" method="GET"/>
       </request>
       
-      <thinktime value="2" random="true"/>
+      <thinktime value="1" random="true"/>
       
       <!-- Another simple request -->
       <request>

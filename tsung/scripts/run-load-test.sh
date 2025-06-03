@@ -47,6 +47,7 @@ Usage: $0 <scenario> [options]
 
 Available scenarios:
   - simple_test
+  - cd_validation
   - few_users_high_frequency
   - many_users_low_frequency
   - peak_load
@@ -215,7 +216,7 @@ if [ "$SCENARIO" = "all" ]; then
     check_scenario "simple_test"  # Just check if any scenario exists
     start_services
     
-    scenarios=("simple_test" "few_users_high_frequency" "many_users_low_frequency" "peak_load" "database_stress")
+    scenarios=("simple_test" "cd_validation" "few_users_high_frequency" "many_users_low_frequency" "peak_load" "database_stress")
     for scenario in "${scenarios[@]}"; do
         if [ -f "$SCENARIOS_DIR/${scenario}.xml" ]; then
             run_test "$scenario"

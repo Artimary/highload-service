@@ -66,7 +66,7 @@ public class InfluxDbService
     {
         try
         {
-            var writeApi = _client.GetWriteApi();
+            var writeApi = _client.GetWriteApiAsync();
             var point = PointData
                 .Measurement("http_requests")
                 .Tag("method", method)
@@ -76,8 +76,7 @@ public class InfluxDbService
                 .Field("request_count", 1L)
                 .Timestamp(DateTime.UtcNow, WritePrecision.Ms);
 
-            writeApi.WritePoint(point, _bucket, _org);
-            writeApi.Flush();
+            await writeApi.WritePointAsync(point, _bucket, _org);
         }
         catch (Exception ex)
         {
@@ -89,7 +88,7 @@ public class InfluxDbService
     {
         try
         {
-            var writeApi = _client.GetWriteApi();
+            var writeApi = _client.GetWriteApiAsync();
             var point = PointData
                 .Measurement("parking_business_metrics")
                 .Tag("region", region)
@@ -99,8 +98,7 @@ public class InfluxDbService
                 .Field("occupancy_rate", totalParkingSpots > 0 ? (double)occupiedSpots / totalParkingSpots * 100 : 0)
                 .Timestamp(DateTime.UtcNow, WritePrecision.Ms);
 
-            writeApi.WritePoint(point, _bucket, _org);
-            writeApi.Flush();
+            await writeApi.WritePointAsync(point, _bucket, _org);
         }
         catch (Exception ex)
         {
@@ -111,7 +109,7 @@ public class InfluxDbService
     {
         try
         {
-            var writeApi = _client.GetWriteApi();
+            var writeApi = _client.GetWriteApiAsync();
             var point = PointData
                 .Measurement("api_performance")
                 .Tag("operation_type", operationType)
@@ -120,8 +118,7 @@ public class InfluxDbService
                 .Field("operation_count", 1L)
                 .Timestamp(DateTime.UtcNow, WritePrecision.Ms);
 
-            writeApi.WritePoint(point, _bucket, _org);
-            writeApi.Flush();
+            await writeApi.WritePointAsync(point, _bucket, _org);
         }
         catch (Exception ex)
         {
@@ -132,7 +129,7 @@ public class InfluxDbService
     {
         try
         {
-            var writeApi = _client.GetWriteApi();
+            var writeApi = _client.GetWriteApiAsync();
             var point = PointData
                 .Measurement("influxdb_query_performance")
                 .Tag("status", status)
@@ -147,8 +144,7 @@ public class InfluxDbService
 
             point = point.Timestamp(DateTime.UtcNow, WritePrecision.Ms);
 
-            writeApi.WritePoint(point, _bucket, _org);
-            writeApi.Flush();
+            await writeApi.WritePointAsync(point, _bucket, _org);
         }
         catch
         {

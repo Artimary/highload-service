@@ -1,0 +1,74 @@
+<?xml version="1.0"?>
+<!DOCTYPE tsung SYSTEM "/usr/local/share/tsung/tsung-1.0.dtd">
+<tsung loglevel="notice" version="1.0">
+
+  <!-- Client machines -->
+  <clients>
+    <client host="localhost" use_controller_vm="true"/>
+  </clients>
+
+  <!-- Server configuration -->
+  <servers>
+    <server host="api" port="8000" type="tcp"/>
+  </servers>
+
+  <!-- Fast validation test for CD pipeline - 3 minutes total -->
+  <load>
+    <!-- Phase 1: Quick validation - 20 users in 1 minute -->
+    <arrivalphase phase="1" duration="1" unit="minute">
+      <users interarrival="3" unit="second"/>
+    </arrivalphase>
+    
+    <!-- Phase 2: Moderate load - 30 users in 2 minutes -->
+    <arrivalphase phase="2" duration="2" unit="minute">
+      <users interarrival="4" unit="second"/>
+    </arrivalphase>
+  </load>
+
+  <options>
+    <option type="ts_http" name="user_agent">
+      <user_agent probability="100">Mozilla/5.0 (CD-Validation-Bot/1.0)</user_agent>
+    </option>
+  </options>
+
+  <sessions>
+    <!-- Fast validation session for CD -->
+    <session name="cd_validation" probability="100" type="ts_http">
+      
+      <!-- Health check -->
+      <request>
+        <http url="/health" method="GET"/>
+      </request>
+      
+      <thinktime value="1" random="true"/>
+      
+      <!-- Get parking spots -->
+      <request>
+        <http url="/api/parking-spots" method="GET"/>
+      </request>
+      
+      <thinktime value="1" random="true"/>
+      
+      <!-- Get parking statistics -->
+      <request>
+        <http url="/api/parking-spots/statistics" method="GET"/>
+      </request>
+      
+      <thinktime value="2" random="true"/>
+      
+      <!-- Create a parking spot -->
+      <request>
+        <http url="/api/parking-spots" method="POST" contents='{"location":"Test Location","capacity":10}' content_type="application/json"/>
+      </request>
+      
+      <thinktime value="1" random="true"/>
+      
+      <!-- Get updated list -->
+      <request>
+        <http url="/api/parking-spots" method="GET"/>
+      </request>
+      
+    </session>
+  </sessions>
+
+</tsung>

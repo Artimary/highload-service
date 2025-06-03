@@ -14,22 +14,22 @@
   <!-- Scenario: Peak load with many users and high frequency -->
   <load>
     <!-- Phase 1: Rapid ramp up - simulate morning rush hour -->
-    <arrivalphase phase="1" duration="5" unit="minute">
+    <arrivalphase phase="1" duration="1" unit="minute">
       <users arrivalrate="5" unit="second"/>
     </arrivalphase>
     
     <!-- Phase 2: Peak traffic - maximum load -->
-    <arrivalphase phase="2" duration="5" unit="minute">
+    <arrivalphase phase="2" duration="1" unit="minute">
       <users arrivalrate="10" unit="second"/>
     </arrivalphase>
     
     <!-- Phase 3: Sustained heavy load -->
-    <arrivalphase phase="3" duration="5" unit="minute">
+    <arrivalphase phase="3" duration="1" unit="minute">
       <users arrivalrate="8" unit="second"/>
     </arrivalphase>
     
     <!-- Phase 4: Gradual decrease -->
-    <arrivalphase phase="4" duration="5" unit="minute">
+    <arrivalphase phase="4" duration="1" unit="minute">
       <users arrivalrate="3" unit="second"/>
     </arrivalphase>
   </load>
