@@ -1,0 +1,121 @@
+<?xml version="1.0"?>
+<!DOCTYPE tsung SYSTEM "/usr/local/share/tsung/tsung-1.0.dtd">
+<tsung loglevel="notice" version="1.0">
+  <!-- Client machines (can use localhost for single machine tests) -->
+  <clients>
+    <client host="localhost" use_controller_vm="true"/>
+  </clients>
+
+  <!-- Server configuration -->
+  <servers>
+    <server host="api" port="8000" type="tcp"/>
+  </servers>
+
+  <!-- Scenario: Peak load with many users and high frequency -->
+  <load>
+    <!-- Phase 1: Rapid ramp up - simulate morning rush hour -->
+    <arrivalphase phase="1" duration="5" unit="minute">
+      <users arrivalrate="5" unit="second"/>
+    </arrivalphase>
+    
+    <!-- Phase 2: Peak traffic - maximum load -->
+    <arrivalphase phase="2" duration="5" unit="minute">
+      <users arrivalrate="10" unit="second"/>
+    </arrivalphase>
+    
+    <!-- Phase 3: Sustained heavy load -->
+    <arrivalphase phase="3" duration="5" unit="minute">
+      <users arrivalrate="8" unit="second"/>
+    </arrivalphase>
+    
+    <!-- Phase 4: Gradual decrease -->
+    <arrivalphase phase="4" duration="5" unit="minute">
+      <users arrivalrate="3" unit="second"/>
+    </arrivalphase>
+  </load>
+  <options>
+    <option type="ts_http" name="user_agent">
+      <user_agent probability="100">Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36</user_agent>
+    </option>
+  </options>
+
+  <sessions>
+    <!-- Session for peak load scenario -->
+    <session name="peak_load" probability="70" type="ts_http">
+      
+      <!-- Immediate status check - urgent parking need -->
+      <request>
+        <http url="/parking/status" method="GET"/>
+      </request>
+      
+      <!-- Very short think time - rush hour urgency -->
+      <thinktime value="5" random="true"/>
+      
+      <!-- Multiple rapid status checks with different parameters -->
+      <for from="1" to="3" var="urgent_counter">
+        <request>
+          <http url="/parking/status?lat=59.9343&amp;lon=30.3351&amp;radius=2000" method="GET"/>
+        </request>
+        <thinktime value="2" random="true"/>
+      </for>
+      
+      <!-- Immediate booking attempt -->
+      <request>
+        <http url="/parking/1/book" method="POST" contents='{"vehicleId":"PEAK_USER_%%_ts_user_server:get_unique_id()%%","spotNumber":%%_os:system_time() rem 10 + 1%%}' content_type="application/json"/>
+      </request>
+      
+      <!-- If booking fails, try another spot quickly -->
+      <request>
+        <http url="/parking/2/book" method="POST" contents='{"vehicleId":"PEAK_USER_ALT_%%_ts_user_server:get_unique_id()%%","spotNumber":%%_os:system_time() rem 10 + 1%%}' content_type="application/json"/>
+      </request>
+      
+      <!-- Multiple route requests -->
+      <for from="1" to="2" var="route_counter">
+        <request>
+          <http url="/parking/1/route" method="GET"/>
+        </request>
+        <request>
+          <http url="/parking/2/route" method="GET"/>
+        </request>
+        <thinktime value="1" random="true"/>
+      </for>
+
+    </session>
+
+    <!-- Alternative session for stress testing database operations -->
+    <session name="database_stress" probability="20" type="ts_http">
+      
+      <!-- Rapid booking and cancellation cycle -->
+      <request>
+        <http url="/parking/1/book" method="POST" contents='{"vehicleId":"DB_STRESS_%%_ts_user_server:get_unique_id()%%","spotNumber":%%_os:system_time() rem 10 + 1%%}' content_type="application/json"/>
+      </request>
+      
+      <thinktime value="1" random="true"/>
+      
+      <!-- Attempt to book multiple spots rapidly -->
+      <for from="1" to="5" var="booking_counter">
+        <request>
+          <http url="/parking/1/book" method="POST" contents='{"vehicleId":"DB_RAPID_%%_ts_user_server:get_unique_id()%%_%%counter%%","spotNumber":%%_os:system_time() rem 10 + 1%%}' content_type="application/json"/>
+        </request>
+      </for>
+
+    </session>
+
+    <!-- Health monitoring session -->
+    <session name="health_monitoring" probability="10" type="ts_http">
+      
+      <!-- Continuous health checks -->
+      <for from="1" to="10" var="health_counter">
+        <request>
+          <http url="/health" method="GET"/>
+        </request>
+        <request>
+          <http url="/health/detailed" method="GET"/>
+        </request>
+        <thinktime value="1" random="true"/>
+      </for>
+
+    </session>
+  </sessions>
+
+</tsung>

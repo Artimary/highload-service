@@ -1,0 +1,81 @@
+<?xml version="1.0"?><tsung loglevel="notice" version="1.0">
+
+  <clients>
+    <client host="localhost" use_controller_vm="true"/>
+  </clients>
+
+  <servers>
+    <server host="api" port="8000" type="tcp"/>
+  </servers>
+
+  <load>
+    <arrivalphase phase="1" duration="2" unit="minute">
+      <users interarrival="2" unit="second"/>
+    </arrivalphase>
+    
+    <arrivalphase phase="2" duration="5" unit="minute">
+      <users interarrival="3" unit="second"/>
+    </arrivalphase>
+    
+    <arrivalphase phase="3" duration="2" unit="minute">
+      <users interarrival="5" unit="second"/>
+    </arrivalphase>
+  </load>
+
+  <options>
+    <option type="ts_http" name="user_agent">
+      <user_agent probability="100">Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36</user_agent>
+    </option>
+  </options>
+
+  <sessions>
+    <session name="few_users_high_frequency" probability="100" type="ts_http">
+      
+      <for from="1" to="5" var="counter">
+        <request>
+          <http url="/parking/status" method="GET"/>
+        </request>
+        
+        <thinktime value="3" random="true"/>
+        
+        <request>
+          <http url="/parking/status?lat=59.9343&amp;lon=30.3351&amp;radius=500" method="GET"/>
+        </request>
+        
+        <thinktime value="2" random="true"/>
+      </for>
+      
+      <request>
+        <http url="/parking/1/book" method="POST" contents="{&quot;vehicleId&quot;:&quot;POWER_USER_%%_ts_user_server:get_unique_id()%%&quot;,&quot;spotNumber&quot;:%%_os:system_time() rem 10 + 1%%}" content_type="application/json"/>
+      </request>
+      
+      <request>
+        <http url="/parking/2/route" method="GET"/>
+      </request>
+      
+      <thinktime value="5" random="true"/>
+      
+      <for from="1" to="3" var="route_counter">
+        <request>
+          <http url="/parking/1/route" method="GET"/>
+        </request>
+        <thinktime value="1" random="true"/>
+      </for>
+      
+      <request>
+        <http url="/health" method="GET"/>
+      </request>
+      
+      <thinktime value="2" random="true"/>
+      
+      <for from="1" to="3" var="status_counter">
+        <request>
+          <http url="/parking/status" method="GET"/>
+        </request>
+        <thinktime value="1" random="true"/>
+      </for>
+
+    </session>
+  </sessions>
+
+</tsung>

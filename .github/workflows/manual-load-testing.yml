@@ -1,0 +1,89 @@
+name: Manual Load Testing
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: 'Test scenario to run'
+        required: true
+        default: 'simple_test'
+        type: choice
+        options:
+        - simple_test
+        - few_users_high_frequency
+        - many_users_low_frequency
+        - peak_load
+        - database_stress
+      duration:
+        description: 'Test duration (minutes)'
+        required: false
+        default: '10'
+        type: string
+
+jobs:
+  manual-load-testing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Start testing environment
+        run: |
+          echo "Starting load testing environment..."
+          docker-compose --profile testing up -d --build
+
+      - name: Wait for services
+        run: |
+          echo "Waiting for services to be ready..."
+          timeout 300 bash -c 'until curl -sf http://localhost:8000/health; do sleep 5; done'
+
+      - name: Run selected load test
+        run: |
+          echo "Running load test scenario: ${{ github.event.inputs.scenario }}"
+          docker-compose --profile testing exec -T tsung tsung -f /tsung/scenarios/${{ github.event.inputs.scenario }}.xml start
+          
+          # Wait for test completion
+          timeout $(( ${{ github.event.inputs.duration }} * 60 + 300 )) bash -c 'while docker-compose --profile testing exec -T tsung pgrep -f tsung > /dev/null; do sleep 10; done'
+
+      - name: Collect and analyze results
+        run: |
+          mkdir -p ./manual-test-results
+          docker cp $(docker-compose --profile testing ps -q tsung):/tsung/results/. ./manual-test-results/
+          
+          if [ -f "./manual-test-results/tsung.log" ]; then
+            total_requests=$(grep -c "request" ./manual-test-results/tsung.log || echo "0")
+            errors=$(grep -c "error" ./manual-test-results/tsung.log || echo "0")
+            success_rate=$(( total_requests > 0 ? (total_requests - errors) * 100 / total_requests : 0 ))
+            
+            echo "=== LOAD TEST RESULTS ==="
+            echo "Scenario: ${{ github.event.inputs.scenario }}"
+            echo "Total Requests: $total_requests"
+            echo "Errors: $errors"
+            echo "Success Rate: $success_rate%"
+            echo "========================="
+            
+            # Create summary file
+            echo "Scenario: ${{ github.event.inputs.scenario }}" > ./manual-test-results/summary.txt
+            echo "Total Requests: $total_requests" >> ./manual-test-results/summary.txt
+            echo "Errors: $errors" >> ./manual-test-results/summary.txt
+            echo "Success Rate: $success_rate%" >> ./manual-test-results/summary.txt
+            echo "Test Duration: ${{ github.event.inputs.duration }} minutes" >> ./manual-test-results/summary.txt
+          else
+            echo "Load test failed - no results found"
+            exit 1
+          fi
+
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: manual-load-test-${{ github.event.inputs.scenario }}-${{ github.run_number }}
+          path: ./manual-test-results/
+          retention-days: 30
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker-compose --profile testing down -v

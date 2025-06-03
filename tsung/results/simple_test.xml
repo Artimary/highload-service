@@ -1,0 +1,38 @@
+<?xml version="1.0"?><tsung loglevel="notice" version="1.0">
+
+  <clients>
+    <client host="localhost" use_controller_vm="true"/>
+  </clients>
+
+  <servers>
+    <server host="api" port="8000" type="tcp"/>
+  </servers>
+
+  <load>
+    <arrivalphase phase="1" duration="1" unit="minute">
+      <users interarrival="10" unit="second"/>
+    </arrivalphase>
+  </load>
+  <options>
+    <option type="ts_http" name="user_agent">
+      <user_agent probability="100">Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36</user_agent>
+    </option>
+  </options>
+
+  <sessions>
+    <session name="simple_test" probability="100" type="ts_http">
+      
+      <request>
+        <http url="/health" method="GET"/>
+      </request>
+      
+      <thinktime value="2" random="true"/>
+      
+      <request>
+        <http url="/parking/status" method="GET"/>
+      </request>
+
+    </session>
+  </sessions>
+
+</tsung>

@@ -79,6 +79,30 @@ jobs:
           # docker-compose -f docker-compose.staging.yml pull
           # docker-compose -f docker-compose.staging.yml up -d
 
+      - name: Run post-deployment load tests
+        run: |
+          echo "Running post-deployment load tests..."
+          docker-compose --profile testing up -d --build
+          timeout 300 bash -c 'until curl -sf http://localhost:8000/health; do sleep 5; done'
+          docker-compose --profile testing exec -T tsung tsung -f /tsung/scenarios/few_users_high_frequency.xml start
+          timeout 600 bash -c 'while docker-compose --profile testing exec -T tsung pgrep -f tsung > /dev/null; do sleep 10; done'
+
+      - name: Validate deployment performance
+        run: |
+          mkdir -p ./deployment-test-results
+          docker cp $(docker-compose --profile testing ps -q tsung):/tsung/results/. ./deployment-test-results/
+          if [ -f "./deployment-test-results/tsung.log" ]; then
+            total_requests=$(grep -c "request" ./deployment-test-results/tsung.log || echo "0")
+            errors=$(grep -c "error" ./deployment-test-results/tsung.log || echo "0")
+            success_rate=$(( (total_requests - errors) * 100 / total_requests ))
+            echo "Deployment validation: $total_requests requests, $success_rate% success rate"
+            if [ "$success_rate" -lt 80 ]; then
+              echo "Deployment validation failed: success rate $success_rate% < 80%"
+              exit 1
+            fi
+          fi
+          docker-compose --profile testing down -v
+
       - name: Run health checks
         run: |
           echo "Running health checks..."

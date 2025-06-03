@@ -181,3 +181,58 @@ jobs:
         run: |
           # Analyze package dependencies
           dotnet list package --outdated 2>/dev/null || echo "All packages up to date"
+
+  load-testing:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Start application and dependencies
+        run: |
+          docker-compose --profile testing up -d --build
+
+      - name: Wait for services to be ready
+        run: |
+          timeout 300 bash -c 'until curl -sf http://localhost:8000/health; do echo "Waiting for API..."; sleep 5; done'
+
+      - name: Run load test
+        run: |
+          docker-compose --profile testing exec -T tsung tsung -f /tsung/scenarios/simple_test.xml start
+          timeout 300 bash -c 'while docker-compose --profile testing exec -T tsung pgrep -f tsung > /dev/null; do sleep 10; done'
+
+      - name: Collect test results
+        run: |
+          mkdir -p ./load-test-results
+          docker cp $(docker-compose --profile testing ps -q tsung):/tsung/results/. ./load-test-results/
+
+      - name: Analyze results
+        run: |
+          if [ -f "./load-test-results/tsung.log" ]; then
+            total_requests=$(grep -c "request" ./load-test-results/tsung.log || echo "0")
+            errors=$(grep -c "error" ./load-test-results/tsung.log || echo "0")
+            success_rate=$(( (total_requests - errors) * 100 / total_requests ))
+            echo "Load test results: $total_requests requests, $success_rate% success rate"
+            if [ "$success_rate" -lt 95 ]; then
+              echo "Load test failed: success rate $success_rate% < 95%"
+              exit 1
+            fi
+          else
+            echo "Load test failed: no results found"
+            exit 1
+          fi
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: load-test-results
+          path: ./load-test-results/
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker-compose --profile testing down -v

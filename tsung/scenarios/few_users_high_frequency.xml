@@ -1,0 +1,98 @@
+<?xml version="1.0"?>
+<!DOCTYPE tsung SYSTEM "/usr/local/share/tsung/tsung-1.0.dtd">
+<tsung loglevel="notice" version="1.0">
+
+  <!-- Client machines (can use localhost for single machine tests) -->
+  <clients>
+    <client host="localhost" use_controller_vm="true"/>
+  </clients>
+
+  <!-- Server configuration -->
+  <servers>
+    <server host="api" port="8000" type="tcp"/>
+  </servers>
+
+  <!-- Scenario: Few users with high request frequency -->
+  <load>
+    <!-- Phase 1: Quick ramp up - 50 users in 2 minutes -->
+    <arrivalphase phase="1" duration="2" unit="minute">
+      <users interarrival="2" unit="second"/>
+    </arrivalphase>
+    
+    <!-- Phase 2: Intensive load - 100 users over 20 minutes -->
+    <arrivalphase phase="2" duration="5" unit="minute">
+      <users interarrival="3" unit="second"/>
+    </arrivalphase>
+    
+    <!-- Phase 3: Cool down - 25 users over 3 minutes -->
+    <arrivalphase phase="3" duration="2" unit="minute">
+      <users interarrival="5" unit="second"/>
+    </arrivalphase>
+  </load>
+
+  <options>
+    <option type="ts_http" name="user_agent">
+      <user_agent probability="100">Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36</user_agent>
+    </option>
+  </options>
+
+  <sessions>
+    <!-- Session for power users with frequent requests -->
+    <session name="few_users_high_frequency" probability="100" type="ts_http">
+      
+      <!-- Rapid checking of parking status -->
+      <for from="1" to="5" var="counter">
+        <request>
+          <http url="/parking/status" method="GET"/>
+        </request>
+        
+        <!-- Short think time between rapid requests -->
+        <thinktime value="3" random="true"/>
+        
+        <!-- Check different parking locations -->
+        <request>
+          <http url="/parking/status?lat=59.9343&amp;lon=30.3351&amp;radius=500" method="GET"/>
+        </request>
+        
+        <thinktime value="2" random="true"/>
+      </for>
+      
+      <!-- Quick booking attempt -->
+      <request>
+        <http url="/parking/1/book" method="POST" contents='{"vehicleId":"POWER_USER_%%_ts_user_server:get_unique_id()%%","spotNumber":%%_os:system_time() rem 10 + 1%%}' content_type="application/json"/>
+      </request>
+      
+      <!-- Check another parking lot immediately -->
+      <request>
+        <http url="/parking/2/route" method="GET"/>
+      </request>
+      
+      <thinktime value="5" random="true"/>
+      
+      <!-- Multiple route requests (GPS recalculation simulation) -->
+      <for from="1" to="3" var="route_counter">
+        <request>
+          <http url="/parking/1/route" method="GET"/>
+        </request>
+        <thinktime value="1" random="true"/>
+      </for>
+      
+      <!-- Frequent health checks -->
+      <request>
+        <http url="/health" method="GET"/>
+      </request>
+      
+      <thinktime value="2" random="true"/>
+      
+      <!-- Another round of status checks -->
+      <for from="1" to="3" var="status_counter">
+        <request>
+          <http url="/parking/status" method="GET"/>
+        </request>
+        <thinktime value="1" random="true"/>
+      </for>
+
+    </session>
+  </sessions>
+
+</tsung>

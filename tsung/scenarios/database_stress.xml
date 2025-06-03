@@ -1,0 +1,127 @@
+<?xml version="1.0"?>
+<!DOCTYPE tsung SYSTEM "/usr/local/share/tsung/tsung-1.0.dtd">
+<tsung loglevel="notice" version="1.0">
+  <!-- Client machines (can use localhost for single machine tests) -->
+  <clients>
+    <client host="localhost" use_controller_vm="true"/>
+  </clients>
+
+  <!-- Server configuration -->
+  <servers>
+    <server host="api" port="8000" type="tcp"/>
+  </servers>
+
+  <!-- Scenario: Database CRUD operations stress test -->
+  <load>
+    <!-- Phase 1: Warm-up -->
+    <arrivalphase phase="1" duration="2" unit="minute">
+      <users arrivalrate="1" unit="second"/>
+    </arrivalphase>
+    
+    <!-- Phase 2: Intensive CRUD operations -->
+    <arrivalphase phase="2" duration="5" unit="minute">
+      <users arrivalrate="3" unit="second"/>
+    </arrivalphase>
+    
+    <!-- Phase 3: Peak database load -->
+    <arrivalphase phase="3" duration="5" unit="minute">
+      <users arrivalrate="5" unit="second"/>
+    </arrivalphase>
+    
+    <!-- Phase 4: Cool down -->
+    <arrivalphase phase="4" duration="3" unit="minute">
+      <users arrivalrate="1" unit="second"/>
+    </arrivalphase>
+  </load>
+  <options>
+    <option type="ts_http" name="user_agent">
+      <user_agent probability="100">Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36</user_agent>
+    </option>
+  </options>
+
+  <sessions>
+    <!-- Session for intensive database operations -->
+    <session name="database_crud_operations" probability="80" type="ts_http">
+      
+      <!-- Create multiple bookings -->
+      <for from="1" to="3" var="booking_counter">
+        <request subst="true">
+          <http url="/parking/1/book" method="POST" 
+                contents='{"vehicleId":"DB_USER_%%_ts_user_server:get_unique_id()%%_%%booking_counter%%","spotNumber":%%_os:system_time() rem 10 + 1%%}' 
+                content_type="application/json"/>
+        </request>
+        
+        <!-- Short delay between bookings -->
+        <thinktime value="2" random="true"/>
+      </for>
+      
+      <!-- Read operations - status checks -->
+      <for from="1" to="5" var="read_counter">
+        <request>
+          <http url="/parking/status" method="GET"/>
+        </request>
+        
+        <request>
+          <http url="/parking/status?lat=59.9343&amp;lon=30.3351&amp;radius=1000" method="GET"/>
+        </request>
+        
+        <thinktime value="1" random="true"/>
+      </for>
+      
+      <!-- Update operations (simulated through re-booking) -->
+      <request subst="true">
+        <http url="/parking/2/book" method="POST" 
+              contents='{"vehicleId":"UPDATE_USER_%%_ts_user_server:get_unique_id()%%","spotNumber":%%_os:system_time() rem 10 + 1%%}' 
+              content_type="application/json"/>
+      </request>
+      
+      <!-- Route queries (database reads) -->
+      <for from="1" to="3" var="route_counter">
+        <request subst="true">
+          <http url="/parking/%%route_counter%%/route" method="GET"/>
+        </request>
+        <thinktime value="1" random="true"/>
+      </for>
+
+    </session>
+
+    <!-- Session for concurrent booking conflicts -->
+    <session name="booking_conflicts" probability="15" type="ts_http">
+      
+      <!-- Try to book the same spots simultaneously -->
+      <for from="1" to="5" var="conflict_counter">
+        <request>
+          <http url="/parking/1/book" method="POST" 
+                contents='{"vehicleId":"CONFLICT_%%_ts_user_server:get_unique_id()%%","spotNumber":1}' 
+                content_type="application/json"/>
+        </request>
+        
+        <request>
+          <http url="/parking/1/book" method="POST" 
+                contents='{"vehicleId":"CONFLICT_%%_ts_user_server:get_unique_id()%%","spotNumber":2}' 
+                content_type="application/json"/>
+        </request>
+      </for>
+
+    </session>
+
+    <!-- Session for health monitoring during database stress -->
+    <session name="health_monitoring_db" probability="5" type="ts_http">
+      
+      <!-- Continuous health monitoring -->
+      <for from="1" to="20" var="health_counter">
+        <request>
+          <http url="/health" method="GET"/>
+        </request>
+        
+        <request>
+          <http url="/health/detailed" method="GET"/>
+        </request>
+        
+        <thinktime value="3" random="true"/>
+      </for>
+
+    </session>
+  </sessions>
+
+</tsung>

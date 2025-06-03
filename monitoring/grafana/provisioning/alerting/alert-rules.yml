@@ -35,7 +35,7 @@ groups:
           - refId: "C"
             queryType: ""
             relativeTimeRange:
-              from: 0
+              from: 300
               to: 0
             datasource:
               type: "__expr__"

@@ -1,0 +1,47 @@
+<?xml version="1.0"?>
+<!DOCTYPE tsung SYSTEM "/usr/local/share/tsung/tsung-1.0.dtd">
+<tsung loglevel="notice" version="1.0">
+
+  <!-- Client machines -->
+  <clients>
+    <client host="localhost" use_controller_vm="true"/>
+  </clients>
+
+  <!-- Server configuration -->
+  <servers>
+    <server host="api" port="8000" type="tcp"/>
+  </servers>
+
+  <!-- Load phases -->
+  <load>
+    <arrivalphase phase="1" duration="1" unit="minute">
+      <users interarrival="10" unit="second"/>
+    </arrivalphase>
+  </load>
+  <!-- Options -->
+  <options>
+    <option type="ts_http" name="user_agent">
+      <user_agent probability="100">Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36</user_agent>
+    </option>
+  </options>
+
+  <!-- Sessions -->
+  <sessions>
+    <session name="simple_test" probability="100" type="ts_http">
+      
+      <!-- Simple health check -->
+      <request>
+        <http url="/health" method="GET"/>
+      </request>
+      
+      <thinktime value="2" random="true"/>
+      
+      <!-- Another simple request -->
+      <request>
+        <http url="/parking/status" method="GET"/>
+      </request>
+
+    </session>
+  </sessions>
+
+</tsung>
