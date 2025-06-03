@@ -75,24 +75,24 @@ services:
         max-size: "10m"
         max-file: "10"
 
-  vehicle_simulator:
-    container_name: vehicle_simulator
-    image: python:3.9-slim
-    volumes:
-      - ./vehicle_simulator:/app
-    working_dir: /app
-    command: sh -c "pip install -r requirements.txt && python vehicle_simulator.py"
-    environment:
-      - API_URL="http://api:8080"
-    depends_on:
-      - api
-    networks:
-      - iot-network
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "10"
+  # vehicle_simulator:
+  #   container_name: vehicle_simulator
+  #   image: python:3.9-slim
+  #   volumes:
+  #     - ./vehicle_simulator:/app
+  #   working_dir: /app
+  #   command: sh -c "pip install -r requirements.txt && python vehicle_simulator.py"
+  #   environment:
+  #     - API_URL="http://api:8080"
+  #   depends_on:
+  #     - api
+  #   networks:
+  #     - iot-network
+  #   logging:
+  #     driver: "json-file"
+  #     options:
+  #       max-size: "10m"
+  #       max-file: "10"
 
   # IoT Controller
   iot-controller:
@@ -214,7 +214,6 @@ services:
   #   container_name: redis
   #   networks:
   #     - iot-network
-
   # nginx:
   #   image: nginx:latest
   #   container_name: nginx
@@ -226,6 +225,29 @@ services:
   #     - api_service
   #   networks:
   #     - iot-network
+  # Tsung Load Testing Tool
+  tsung:
+    build:
+      context: ./tsung
+      dockerfile: Dockerfile
+    container_name: tsung
+    volumes:
+      - ./tsung/scenarios:/tsung/scenarios
+      - ./tsung/scripts:/tsung/scripts
+      - ./tsung/config:/tsung/config
+      - ./tsung/results:/tsung/results
+    depends_on:
+      - api
+      - postgresql
+      - influxdb
+    networks:
+      - iot-network
+    profiles:
+      - testing
+    environment:
+      - API_HOST=api
+      - API_PORT=8000
+    command: tail -f /dev/null # Keep container running for manual test execution
 
 networks:
   iot-network:
