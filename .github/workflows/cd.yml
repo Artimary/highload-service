@@ -110,20 +110,6 @@ jobs:
           # Wait for services to be ready with better error handling
           echo "⏳ Waiting for services to be ready..."
 
-          # Wait for API with retries
-          if ! timeout 300 bash -c 'until curl -sf http://localhost:8000/health; do echo "Waiting for API... ($(date))"; sleep 5; done'; then
-            echo "❌ API failed to start, checking logs..."
-            docker compose logs api | tail -50
-            exit 1
-          fi
-
-          # Wait for PostgreSQL
-          if ! timeout 60 bash -c 'until docker compose exec -T postgresql pg_isready -U postgres; do echo "Waiting for PostgreSQL..."; sleep 3; done'; then
-            echo "❌ PostgreSQL failed to start, checking logs..."
-            docker compose logs postgresql | tail -50
-            exit 1
-          fi
-
           # Start tsung container
           echo "🔥 Starting Tsung load testing container..."
           docker compose --profile testing up -d tsung
