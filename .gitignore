@@ -39,3 +39,13 @@ logs
 
 # Scripts
 *.ps1
+
+# Tsung
+*.dump
+tsung/results/many_users_low_frequency_20250603-0711
+tsung/results/peak_load_20250603-0616
+tsung/README.md
+LOAD_TEST_RESULTS.html
+LOAD_TEST_RESULTS.md
+LOAD_TESTING_GUIDE.md
+CI_CD_LOAD_TESTING.md
