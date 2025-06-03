@@ -82,15 +82,15 @@ jobs:
       - name: Run post-deployment load tests
         run: |
           echo "Running post-deployment load tests..."
-          docker-compose --profile testing up -d --build
+          docker compose --profile testing up -d --build
           timeout 300 bash -c 'until curl -sf http://localhost:8000/health; do sleep 5; done'
-          docker-compose --profile testing exec -T tsung tsung -f /tsung/scenarios/few_users_high_frequency.xml start
-          timeout 600 bash -c 'while docker-compose --profile testing exec -T tsung pgrep -f tsung > /dev/null; do sleep 10; done'
+          docker compose --profile testing exec -T tsung tsung -f /tsung/scenarios/few_users_high_frequency.xml start
+          timeout 600 bash -c 'while docker compose --profile testing exec -T tsung pgrep -f tsung > /dev/null; do sleep 10; done'
 
       - name: Validate deployment performance
         run: |
           mkdir -p ./deployment-test-results
-          docker cp $(docker-compose --profile testing ps -q tsung):/tsung/results/. ./deployment-test-results/
+          docker cp $(docker compose --profile testing ps -q tsung):/tsung/results/. ./deployment-test-results/
           if [ -f "./deployment-test-results/tsung.log" ]; then
             total_requests=$(grep -c "request" ./deployment-test-results/tsung.log || echo "0")
             errors=$(grep -c "error" ./deployment-test-results/tsung.log || echo "0")
@@ -101,7 +101,7 @@ jobs:
               exit 1
             fi
           fi
-          docker-compose --profile testing down -v
+          docker compose --profile testing down -v
 
       - name: Run health checks
         run: |

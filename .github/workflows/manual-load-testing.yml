@@ -4,20 +4,20 @@ on:
   workflow_dispatch:
     inputs:
       scenario:
-        description: 'Test scenario to run'
+        description: "Test scenario to run"
         required: true
-        default: 'simple_test'
+        default: "simple_test"
         type: choice
         options:
-        - simple_test
-        - few_users_high_frequency
-        - many_users_low_frequency
-        - peak_load
-        - database_stress
+          - simple_test
+          - few_users_high_frequency
+          - many_users_low_frequency
+          - peak_load
+          - database_stress
       duration:
-        description: 'Test duration (minutes)'
+        description: "Test duration (minutes)"
         required: false
-        default: '10'
+        default: "10"
         type: string
 
 jobs:
@@ -32,7 +32,7 @@ jobs:
       - name: Start testing environment
         run: |
           echo "Starting load testing environment..."
-          docker-compose --profile testing up -d --build
+          docker compose --profile testing up -d --build
 
       - name: Wait for services
         run: |
@@ -42,16 +42,16 @@ jobs:
       - name: Run selected load test
         run: |
           echo "Running load test scenario: ${{ github.event.inputs.scenario }}"
-          docker-compose --profile testing exec -T tsung tsung -f /tsung/scenarios/${{ github.event.inputs.scenario }}.xml start
-          
+          docker compose --profile testing exec -T tsung tsung -f /tsung/scenarios/${{ github.event.inputs.scenario }}.xml start
+
           # Wait for test completion
-          timeout $(( ${{ github.event.inputs.duration }} * 60 + 300 )) bash -c 'while docker-compose --profile testing exec -T tsung pgrep -f tsung > /dev/null; do sleep 10; done'
+          timeout $(( ${{ github.event.inputs.duration }} * 60 + 300 )) bash -c 'while docker compose --profile testing exec -T tsung pgrep -f tsung > /dev/null; do sleep 10; done'
 
       - name: Collect and analyze results
         run: |
           mkdir -p ./manual-test-results
-          docker cp $(docker-compose --profile testing ps -q tsung):/tsung/results/. ./manual-test-results/
-          
+          docker cp $(docker compose --profile testing ps -q tsung):/tsung/results/. ./manual-test-results/
+
           if [ -f "./manual-test-results/tsung.log" ]; then
             total_requests=$(grep -c "request" ./manual-test-results/tsung.log || echo "0")
             errors=$(grep -c "error" ./manual-test-results/tsung.log || echo "0")
@@ -86,4 +86,4 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          docker-compose --profile testing down -v
+          docker compose --profile testing down -v

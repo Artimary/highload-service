@@ -193,7 +193,7 @@ jobs:
 
       - name: Start application and dependencies
         run: |
-          docker-compose --profile testing up -d --build
+          docker compose --profile testing up -d --build
 
       - name: Wait for services to be ready
         run: |
@@ -201,13 +201,13 @@ jobs:
 
       - name: Run load test
         run: |
-          docker-compose --profile testing exec -T tsung tsung -f /tsung/scenarios/simple_test.xml start
-          timeout 300 bash -c 'while docker-compose --profile testing exec -T tsung pgrep -f tsung > /dev/null; do sleep 10; done'
+          docker compose --profile testing exec -T tsung tsung -f /tsung/scenarios/simple_test.xml start
+          timeout 300 bash -c 'while docker compose --profile testing exec -T tsung pgrep -f tsung > /dev/null; do sleep 10; done'
 
       - name: Collect test results
         run: |
           mkdir -p ./load-test-results
-          docker cp $(docker-compose --profile testing ps -q tsung):/tsung/results/. ./load-test-results/
+          docker cp $(docker compose --profile testing ps -q tsung):/tsung/results/. ./load-test-results/
 
       - name: Analyze results
         run: |
@@ -235,4 +235,4 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          docker-compose --profile testing down -v
+          docker compose --profile testing down -v
