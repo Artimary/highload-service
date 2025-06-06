@@ -37,7 +37,6 @@ jobs:
 
       - name: Wait for services readiness
         run: |
-          timeout 300 bash -c 'until curl -sf http://localhost:8000/health; do echo "Waiting for API..."; sleep 5; done'
           docker compose --profile testing exec -T postgresql pg_isready -U postgres
 
       - name: Run load test scenarios
