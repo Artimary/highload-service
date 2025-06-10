@@ -6,10 +6,9 @@
   <clients>
     <client host="localhost" use_controller_vm="true"/>
   </clients>
-
   <!-- Server configuration -->
   <servers>
-    <server host="api" port="8000" type="tcp"/>
+    <server host="nginx-lb" port="80" type="tcp"/>
   </servers>
 
   <!-- Scenario: Few users with high request frequency -->

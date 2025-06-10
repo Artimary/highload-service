@@ -42,8 +42,12 @@ logs
 
 # Tsung
 *.dump
-tsung/results/many_users_low_frequency_20250603-0711
-tsung/results/peak_load_20250603-0616
+tsung/results/
 tsung/README.md
 LOAD_TEST_RESULTS.html
 doc/
+scaling-results/
+scaling-results/vertical_1cpu_1gb_peak_load
+scaling-results/vertical_2cpu_2gb_peak_load
+
+temp/

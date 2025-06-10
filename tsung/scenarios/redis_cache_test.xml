@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<!DOCTYPE tsung SYSTEM "/usr/local/share/tsung/tsung-1.0.dtd">
+<tsung loglevel="notice">
+  <clients>
+    <client host="localhost" use_controller_vm="true"/>
+  </clients>
+  
+  <servers>
+    <server host="nginx" port="80" type="tcp"/>
+  </servers>
+
+  <load>
+    <arrivalphase phase="1" duration="2" unit="second">
+      <users arrivalrate="10" unit="second"/>
+    </arrivalphase>
+    <arrivalphase phase="2" duration="2" unit="minute">
+      <users arrivalrate="30" unit="second"/>
+    </arrivalphase>
+    <arrivalphase phase="3" duration="2" unit="second">
+      <users arrivalrate="5" unit="second"/>
+    </arrivalphase>
+  </load>
+  
+  <sessions>
+    <session name="redis_test" probability="100" type="ts_http">
+      <!-- Повторяющиеся запросы - отлично подходят для кэширования -->
+      <for from="1" to="10" var="i">
+        <request>
+          <http url="/parking/status" method="GET" version="1.1"/>
+        </request>
+        <thinktime value="0.5"/>
+      </for>
+    </session>
+  </sessions>
+</tsung>
