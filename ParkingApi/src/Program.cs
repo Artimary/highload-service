@@ -26,6 +26,16 @@ builder.Services.AddMemoryCache();
 // Add Prometheus metrics services
 builder.Services.AddHealthChecks();
 
+// Add Redis cache
+builder.Services.AddStackExchangeRedisCache(options =>
+{
+    options.Configuration = builder.Configuration.GetConnectionString("Redis");
+    options.InstanceName = builder.Configuration.GetSection("Redis:InstanceName").Value;
+});
+
+// Add custom cache service
+builder.Services.AddScoped<ICacheService, RedisCacheService>();
+
 // Configure services to read from configuration
 builder.Services.AddSingleton<InfluxDbService>(sp =>
 {

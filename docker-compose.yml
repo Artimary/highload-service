@@ -1,4 +1,4 @@
-version: "3.9"
+version: "3"
 
 services:
   # MQTT Broker
@@ -75,24 +75,24 @@ services:
         max-size: "10m"
         max-file: "10"
 
-  # vehicle_simulator:
-  #   container_name: vehicle_simulator
-  #   image: python:3.9-slim
-  #   volumes:
-  #     - ./vehicle_simulator:/app
-  #   working_dir: /app
-  #   command: sh -c "pip install -r requirements.txt && python vehicle_simulator.py"
-  #   environment:
-  #     - API_URL="http://api:8080"
-  #   depends_on:
-  #     - api
-  #   networks:
-  #     - iot-network
-  #   logging:
-  #     driver: "json-file"
-  #     options:
-  #       max-size: "10m"
-  #       max-file: "10"
+  vehicle_simulator:
+    container_name: vehicle_simulator
+    image: python:3.9-slim
+    volumes:
+      - ./vehicle_simulator:/app
+    working_dir: /app
+    command: sh -c "pip install -r requirements.txt && python vehicle_simulator.py"
+    environment:
+      - API_URL="http://nginx:80"
+    depends_on:
+      - nginx
+    networks:
+      - iot-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "10"
 
   # IoT Controller
   iot-controller:
@@ -225,22 +225,18 @@ services:
         reservations:
           cpus: "1"
           memory: 1G
-  # redis:
-  #   image: redis:latest
-  #   container_name: redis
-  #   networks:
-  #     - iot-network
-  # nginx:
-  #   image: nginx:latest
-  #   container_name: nginx
-  #   ports:
-  #     - "80:80"
-  #   volumes:
-  #     - ./nginx.conf:/etc/nginx/nginx.conf
-  #   depends_on:
-  #     - api_service
-  #   networks:
-  #     - iot-network
+
+  nginx:
+    image: nginx:latest
+    container_name: nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
+    networks:
+      - iot-network
   # Tsung Load Testing Tool
   tsung:
     build:

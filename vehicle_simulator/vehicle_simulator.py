@@ -4,7 +4,7 @@ import time
 import threading
 import concurrent.futures
 
-BASE_URL = "http://api:8000"
+BASE_URL = "http://nginx:80"
 
 class Vehicle:
     def __init__(self, vehicle_id):

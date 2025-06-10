@@ -1,7 +1,9 @@
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using System;
+using Dapper;
 using Npgsql;
+using ParkingApi.Models;
 
 namespace ParkingApi.Services;
 
@@ -74,5 +76,39 @@ public class PostgresService
         cmd.Parameters.AddWithValue("active", active);
         int rowsAffected = await cmd.ExecuteNonQueryAsync();
         return rowsAffected > 0;
+    }
+
+    // Добавьте этот метод в PostgresService для получения информации о бронировании
+    public async Task<BookingInfo> GetBookingInfoAsync(int bookingId)
+    {
+        using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync();
+
+        string sql = @"SELECT booking_id, vehicle_id, parking_id, spot_number, active 
+                    FROM bookings 
+                    WHERE booking_id = @bookingId";
+
+        var bookingInfo = await connection.QueryFirstOrDefaultAsync<BookingInfo>(
+            sql,
+            new { bookingId });
+
+        return bookingInfo;
+    }
+
+    // Добавьте этот метод в PostgresService для получения детальной информации о парковочном месте
+    public async Task<object> GetParkingSpotDetailsAsync(int spotId)
+    {
+        using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync();
+
+        string sql = @"SELECT p.parking_id, p.name, p.address, p.capacity, 
+                            p.latitude, p.longitude, p.hourly_rate, 
+                            b.spot_number, b.active
+                    FROM parking_lots p
+                    LEFT JOIN bookings b ON p.parking_id = b.parking_id AND b.spot_number = @spotId
+                    WHERE p.parking_id = (SELECT parking_id FROM bookings WHERE spot_number = @spotId LIMIT 1)";
+
+        var spotDetails = await connection.QueryFirstOrDefaultAsync(sql, new { spotId });
+        return spotDetails;
     }
 }
