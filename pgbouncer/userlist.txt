@@ -1,0 +1,4 @@
+"postgres" "md59d4e1e887da8dc33bfdb5b6315ef4e29"
+"replicator" "md56124fee90c9c0df9532c0a85658d75d3"
+"parking_app" "md5a31792abb3a117f13c5a7f6374c4b204"
+"history_app" "md5c2f4dfe5e10942980c4cdde5a1e8a4e7"
