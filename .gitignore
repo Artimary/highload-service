@@ -24,14 +24,19 @@ x86/
 *.mdf
 *.ldf
 *.ndf
+postgresql/data/
+postgresql/master-data/
+postgresql/replica1-data/
+postgresql/replica2-data/
+postgresql/shard1-data/
+postgresql/shard2-data/
+influxdb/data/
 
 # Grafana & Monitoring
-grafana/data/
-influxdb/data/
+monitoring/grafana/data/
 prometheus/data/
 mosquitto/data/
 mosquitto/log/
-postgresql/data/
 
 # Logs
 *.log
@@ -44,7 +49,6 @@ logs
 *.dump
 tsung/results/
 tsung/README.md
-LOAD_TEST_RESULTS.html
 doc/
 scaling-results/
 scaling-results/vertical_1cpu_1gb_peak_load

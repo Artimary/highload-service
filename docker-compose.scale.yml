@@ -16,6 +16,8 @@ services:
       - influxdb
       - redis
     environment:
+      # - USE_MOCK_DATA=true
+      - POSTGRES_CONNECTION_STRING=Host=pgbouncer;Port=6432;Database=parking_spots;Username=postgres;Password=secret;Maximum Pool Size=20;
       - INFLUXDB_URL=http://influxdb:8086
       - INFLUXDB_TOKEN=super-secret-token
       - INFLUXDB_ORG=iot_org
@@ -59,6 +61,7 @@ services:
       - INFLUXDB_TOKEN=super-secret-token
       - INFLUXDB_ORG=iot_org
       - INFLUXDB_BUCKET=iot_bucket
+      - POSTGRES_CONNECTION_STRING=Host=pgbouncer;Port=6432;Database=parking_spots;Username=postgres;Password=secret;Maximum Pool Size=20;
       - POSTGRES_HOST=postgresql
       - POSTGRES_PORT=5432
       - POSTGRES_DB=parking
@@ -98,6 +101,7 @@ services:
       - INFLUXDB_TOKEN=super-secret-token
       - INFLUXDB_ORG=iot_org
       - INFLUXDB_BUCKET=iot_bucket
+      - POSTGRES_CONNECTION_STRING=Host=pgbouncer;Port=6432;Database=parking_spots;Username=postgres;Password=secret;Maximum Pool Size=20;
       - POSTGRES_HOST=postgresql
       - POSTGRES_PORT=5432
       - POSTGRES_DB=parking
@@ -229,6 +233,237 @@ services:
         reservations:
           cpus: "${REDIS_CPU_RESERVATION:-0.5}"
           memory: "${REDIS_MEMORY_RESERVATION:-512M}"
+
+  pg-replica-1:
+    image: postgres:latest
+    container_name: postgres-replica-1
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: parking
+      # Настройки для репликации
+      POSTGRES_MASTER_SERVICE_HOST: postgresql
+      POSTGRES_MASTER_SERVICE_PORT: 5432
+      POSTGRES_REPLICATION_USER: replicator
+      POSTGRES_REPLICATION_PASSWORD: replpass
+    volumes:
+      - ./postgresql/replica1-data:/var/lib/postgresql/data
+      - ./postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf
+      - ./postgres/replica.conf:/etc/postgresql/postgresql.conf
+    ports:
+      - "5433:5432"
+    networks:
+      - iot-network
+    # entrypoint: ["/bin/bash"]
+    command: |
+      /bin/bash -c "
+      chown -R postgres:postgres /var/lib/postgresql/data
+      chmod 700 /var/lib/postgresql/data
+
+      # Проверяем не только наличие standby.signal, но и PG_VERSION
+      if [ -f /var/lib/postgresql/data/standby.signal ] && [ -f /var/lib/postgresql/data/PG_VERSION ]; then
+        echo 'Репликация уже настроена и директория данных корректна. Запускаем PostgreSQL в режиме реплики.'
+        gosu postgres postgres
+      else
+        echo 'Инициализация репликации заново...'
+        
+        # Удаляем предыдущие данные перед инициализацией
+        rm -rf /var/lib/postgresql/data/*
+        
+        # Ждем пока мастер будет готов
+        until pg_isready -h postgresql -p 5432; do
+          echo 'Ожидаем готовности мастера...'
+          sleep 2
+        done
+        
+        # Создаем пользователя для репликации на мастере
+        PGPASSWORD=secret psql -h postgresql -p 5432 -U postgres -c \"DO \\\$\\\$ BEGIN CREATE USER replicator REPLICATION PASSWORD 'replpass'; EXCEPTION WHEN duplicate_object THEN RAISE NOTICE 'User already exists'; END \\\$\\\$;\"
+        
+        # Создаем слот репликации
+        PGPASSWORD=secret psql -h postgresql -p 5432 -U postgres -c \"SELECT pg_create_physical_replication_slot('replica_slot_1', true) WHERE NOT EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = 'replica_slot_1');\"
+        
+        # Создаем базовую резервную копию с мастера
+        PGPASSWORD=replpass pg_basebackup -h postgresql -p 5432 -U replicator -D /var/lib/postgresql/data -X stream -P -v
+        
+        # Создаем файл standby.signal
+        touch /var/lib/postgresql/data/standby.signal
+        
+        # Настраиваем подключение к мастеру
+        echo \"primary_conninfo = 'host=postgresql port=5432 user=replicator password=replpass'\" >> /var/lib/postgresql/data/postgresql.conf
+        echo \"primary_slot_name = 'replica_slot_1'\" >> /var/lib/postgresql/data/postgresql.conf
+        
+        chown -R postgres:postgres /var/lib/postgresql/data
+        chmod 700 /var/lib/postgresql/data
+
+        # Запускаем PostgreSQL
+        exec gosu postgres postgres
+      fi
+      "
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pg-replica-2:
+    image: postgres:latest
+    container_name: postgres-replica-2
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: parking
+      # Настройки для репликации
+      POSTGRES_MASTER_SERVICE_HOST: postgresql
+      POSTGRES_MASTER_SERVICE_PORT: 5432
+      POSTGRES_REPLICATION_USER: replicator
+      POSTGRES_REPLICATION_PASSWORD: replpass
+    volumes:
+      - ./postgresql/replica2-data:/var/lib/postgresql/data
+      - ./postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf
+      - ./postgres/replica.conf:/etc/postgresql/postgresql.conf
+    ports:
+      - "5434:5432"
+    networks:
+      - iot-network
+    # entrypoint: ["/bin/bash"]
+    command: |
+      /bin/bash -c "
+      chown -R postgres:postgres /var/lib/postgresql/data
+      chmod 700 /var/lib/postgresql/data
+
+      # Проверяем не только наличие standby.signal, но и PG_VERSION
+      if [ -f /var/lib/postgresql/data/standby.signal ] && [ -f /var/lib/postgresql/data/PG_VERSION ]; then
+        echo 'Репликация уже настроена и директория данных корректна. Запускаем PostgreSQL в режиме реплики.'
+        gosu postgres postgres
+      else
+        echo 'Инициализация репликации заново...'
+        
+        # Удаляем предыдущие данные перед инициализацией
+        rm -rf /var/lib/postgresql/data/*
+        
+        # Ждем пока мастер будет готов
+        until pg_isready -h postgresql -p 5432; do
+          echo 'Ожидаем готовности мастера...'
+          sleep 2
+        done
+        
+        # Создаем пользователя для репликации на мастере
+        PGPASSWORD=secret psql -h postgresql -p 5432 -U postgres -c \"DO \\\$\\\$ BEGIN CREATE USER replicator REPLICATION PASSWORD 'replpass'; EXCEPTION WHEN duplicate_object THEN RAISE NOTICE 'User already exists'; END \\\$\\\$;\"
+        
+        # Создаем слот репликации
+        PGPASSWORD=secret psql -h postgresql -p 5432 -U postgres -c \"SELECT pg_create_physical_replication_slot('replica_slot_2', true) WHERE NOT EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = 'replica_slot_2');\"
+        
+        # Создаем базовую резервную копию с мастера
+        PGPASSWORD=replpass pg_basebackup -h postgresql -p 5432 -U replicator -D /var/lib/postgresql/data -X stream -P -v
+        
+        # Создаем файл standby.signal
+        touch /var/lib/postgresql/data/standby.signal
+        
+        # Настраиваем подключение к мастеру
+        echo \"primary_conninfo = 'host=postgresql port=5432 user=replicator password=replpass'\" >> /var/lib/postgresql/data/postgresql.conf
+        echo \"primary_slot_name = 'replica_slot_2'\" >> /var/lib/postgresql/data/postgresql.conf
+        
+        chown -R postgres:postgres /var/lib/postgresql/data
+        chmod 700 /var/lib/postgresql/data
+
+        # Запускаем PostgreSQL
+        exec gosu postgres postgres
+      fi
+      "
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pg-shard-1:
+    image: postgres:latest
+    container_name: postgres-shard-1
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: parking_spots
+      MAX_CONNECTIONS: ${PG_SHARD_MAX_CONNECTIONS:-200}
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    volumes:
+      - ./postgresql/shard1-data:/var/lib/postgresql/data
+      - ./postgres/init-shard1.sql:/docker-entrypoint-initdb.d/init-shard1.sql
+      - ./postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    ports:
+      - "5435:5432"
+    networks:
+      - iot-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pg-shard-2:
+    image: postgres:latest
+    container_name: postgres-shard-2
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: parking_bookings
+      MAX_CONNECTIONS: ${PG_SHARD_MAX_CONNECTIONS:-200}
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    volumes:
+      - ./postgresql/shard2-data:/var/lib/postgresql/data
+      - ./postgres/init-shard2.sql:/docker-entrypoint-initdb.d/init-shard2.sql
+      - ./postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    ports:
+      - "5436:5432"
+    networks:
+      - iot-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: pgbouncer
+    environment:
+      - DB_USER=postgres
+      - DB_PASSWORD=secret
+      - DB_HOST=postgresql
+      - DB_PORT=5432
+      - DB_NAME=parking
+      - POOL_MODE=transaction
+      - MAX_CLIENT_CONN=1000
+      - DEFAULT_POOL_SIZE=20
+    ports:
+      - "6432:5432"
+    depends_on:
+      pg-replica-1:
+        condition: service_healthy
+      pg-replica-2:
+        condition: service_healthy
+      pg-shard-1:
+        condition: service_healthy
+      pg-shard-2:
+        condition: service_healthy
+    networks:
+      - iot-network
+    restart: always
+    volumes:
+      - ./pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+      - ./pgbouncer/userlist.txt:/etc/pgbouncer/userlist.txt:ro
+    healthcheck:
+      test: ["CMD", "bash", "-c", "printf '' | nc localhost 5432"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 networks:
   iot-network:

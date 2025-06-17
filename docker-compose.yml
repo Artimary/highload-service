@@ -172,6 +172,8 @@ services:
     volumes:
       - ./postgresql/data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./postgres/pg_hba.conf:/var/lib/postgresql/data/pg_hba.conf
+    command: postgres -c hba_file=/var/lib/postgresql/data/pg_hba.conf
     networks:
       - iot-network
     logging:
@@ -187,6 +189,12 @@ services:
         reservations:
           cpus: "1"
           memory: 0.5G
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   api:
     build:
@@ -210,6 +218,10 @@ services:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=secret
       - ASPNETCORE_URLS=http://+:8000
+      - DB_CONNECTION_STRING=Host=postgresql;Port=5432;Database=parking;Username=postgres;Password=secret
+      - DB_REPLICA_CONNECTION_STRING=Host=postgres-replica-1;Port=5432;Database=parking;Username=postgres;Password=secret
+      - SHARD_1_CONNECTION_STRING=Host=postgres-shard-1;Port=5432;Database=parking_spots;Username=postgres;Password=secret
+      - SHARD_2_CONNECTION_STRING=Host=postgres-shard-2;Port=5432;Database=parking_bookings;Username=postgres;Password=secret
     networks:
       - iot-network
     logging:
