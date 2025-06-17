@@ -1,0 +1,58 @@
+<?xml version="1.0"?>
+<!DOCTYPE tsung SYSTEM "/usr/local/share/tsung/tsung-1.0.dtd">
+<tsung loglevel="notice" version="1.0">
+  <!-- Настройка клиентов -->
+  <clients>
+    <client host="localhost" use_controller_vm="true" maxusers="8000"/>
+  </clients>
+
+  <!-- Настройка нагрузки -->
+  <load>
+    <arrivalphase phase="1" duration="60" unit="second">
+      <users arrivalrate="10" unit="second"/>
+    </arrivalphase>
+    <arrivalphase phase="2" duration="120" unit="second">
+      <users arrivalrate="50" unit="second"/>
+    </arrivalphase>
+    <arrivalphase phase="3" duration="180" unit="second">
+      <users arrivalrate="100" unit="second"/>
+    </arrivalphase>
+  </load>
+
+  <!-- Определение целевого сервера -->
+  <servers>
+    <server host="nginx" port="80" type="tcp"/>
+  </servers>
+
+  <!-- Определение сценариев -->
+  <sessions>
+    <!-- Сценарий для тестирования операций чтения (репликация) -->
+    <session name="read_parking" probability="80" type="ts_http">
+      <request>
+        <http url="/api/parking/spots?parkingId=1" method="GET"/>
+      </request>
+      <thinktime value="1" random="true"/>
+      <request>
+        <http url="/api/parking/spots?parkingId=2" method="GET"/>
+      </request>
+      <thinktime value="1" random="true"/>
+      <request>
+        <http url="/api/parking/spots?parkingId=3" method="GET"/>
+      </request>
+    </session>
+    
+    <!-- Сценарий для тестирования шардирования (запись) -->
+    <session name="booking_operations" probability="20" type="ts_http">
+      <request subst="true">
+        <http url="/api/parking/spot/book" method="POST" 
+              contents='{"vehicleId":"TSUNG-#{_tsung_userid}","parkingId":1,"spotNumber":#{auth_spotid}}' 
+              content_type="application/json"/>
+        <dyn_variable name="booking_id" jsonpath="$.bookingId"/>
+      </request>
+      <thinktime value="3" random="true"/>
+      <request subst="true">
+        <http url="/api/parking/booking/${booking_id}" method="DELETE"/>
+      </request>
+    </session>
+  </sessions>
+</tsung>
