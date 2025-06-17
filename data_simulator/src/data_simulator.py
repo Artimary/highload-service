@@ -3,192 +3,205 @@ import time
 import random
 import logging
 import json
-import psycopg2
 import os
+from datetime import datetime, timedelta
+import math
 
+# Configure logging with more detail
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Configuration
 MQTT_HOST = os.getenv('MQTT_HOST', 'mosquitto')
 MQTT_PORT = 1883
 MQTT_TOPIC = 'iot_topic'
 
-# Database configuration from environment variables
-POSTGRES_HOST = os.getenv('POSTGRES_HOST', 'postgresql')
-POSTGRES_USER = os.getenv('POSTGRES_USER', 'postgres')
-POSTGRES_PASSWORD = os.getenv('POSTGRES_PASSWORD', 'secret')
-POSTGRES_DB = os.getenv('POSTGRES_DB', 'parking')
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-pg_conn = psycopg2.connect(
-    dbname=POSTGRES_DB, 
-    user=POSTGRES_USER, 
-    password=POSTGRES_PASSWORD, 
-    host=POSTGRES_HOST
-)
-
-logger.info("Data simulator started.")
+# Simulation parameters
+NUM_PARKINGS = 150
+MIN_CAPACITY = 20
+MAX_CAPACITY = 500
+UPDATE_INTERVAL = 15  # seconds between updates
 
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
         logger.info("Connected to MQTT Broker!")
-        client.subscribe(MQTT_TOPIC)
     else:
-        logger.error(f"Failed to connect, return code {rc}")
+        logger.error(f"Failed to connect to MQTT, return code {rc}")
 
 def on_disconnect(client, userdata, rc):
     logger.warning(f"Disconnected from MQTT Broker. Reason: {rc}")
+
+class ParkingSimulator:
+    def __init__(self, num_parkings=NUM_PARKINGS):
+        self.parkings = []
+        
+        # Initialize parking lots
+        for i in range(1, num_parkings + 1):
+            capacity = random.randint(MIN_CAPACITY, MAX_CAPACITY)
+            # Start with random occupancy between 20% and 80%
+            occupied_spots = int(capacity * random.uniform(0.2, 0.8))
+            free_spots = capacity - occupied_spots
+            
+            self.parkings.append({
+                'id': i,
+                'name': f"Parking {i}",
+                'capacity': capacity,
+                'free_spots': free_spots,
+                'occupied_spots': occupied_spots,
+                # Add randomness to simulation patterns
+                'volatility': random.uniform(0.8, 1.5),  # How quickly occupancy changes
+                'peak_hour_factor': random.uniform(0.8, 1.2),  # How much peak hours affect this parking
+                'weekend_factor': random.uniform(0.4, 0.8),  # How weekend occupancy differs from weekday
+            })
+            
+        logger.info(f"Initialized {len(self.parkings)} parking lots for simulation")
+
+    def get_occupancy_trend(self):
+        """Calculate the current trend factor based on time of day"""
+        now = datetime.now()
+        hour = now.hour
+        minute = now.minute
+        day_of_week = now.weekday()  # 0-6, Monday to Sunday
+        
+        # Weekend factor (lower occupancy on weekends)
+        is_weekend = day_of_week >= 5  # Saturday or Sunday
+        
+        # Base trend calculation based on time of day
+        if is_weekend:
+            # Weekend pattern: gradually increases from morning, peaks in afternoon, then decreases
+            if hour < 8:  # Early morning
+                trend = 0.1 + (hour * 0.05)
+            elif hour < 12:  # Morning to noon
+                trend = 0.3 + ((hour - 8) * 0.1)
+            elif hour < 17:  # Afternoon peak
+                trend = 0.5 + ((hour - 12) * 0.05)
+            else:  # Evening decrease
+                trend = 0.5 - ((hour - 17) * 0.05)
+        else:
+            # Weekday pattern: morning rush, midday lull, evening rush
+            if hour < 7:  # Very early morning
+                trend = 0.1 + (hour * 0.05)
+            elif hour < 10:  # Morning rush hour
+                trend = 0.4 + ((hour - 7) * 0.2)
+            elif hour < 16:  # Midday
+                trend = 0.8 - ((hour - 10) * 0.05)
+            elif hour < 19:  # Evening rush hour
+                trend = 0.5 + ((hour - 16) * 0.15)
+            else:  # Night
+                trend = 0.8 - ((hour - 19) * 0.1)
+        
+        # Minute-level fluctuations for smoother transitions
+        minute_factor = math.sin(minute * 6 * math.pi / 180) * 0.05
+        trend += minute_factor
+        
+        # Ensure trend is within sensible bounds
+        trend = max(0.05, min(trend, 0.95))
+        
+        return trend, is_weekend
+    
+    def update(self):
+        """Update parking occupancy based on time trends and randomness"""
+        trend, is_weekend = self.get_occupancy_trend()
+        
+        for parking in self.parkings:
+            capacity = parking['capacity']
+            current_free = parking['free_spots']
+            current_occupied = parking['occupied_spots']
+            
+            # Apply time-based trend, adjusted by parking-specific factors
+            base_occupancy = capacity * trend
+            if is_weekend:
+                base_occupancy *= parking['weekend_factor']
+            else:
+                base_occupancy *= parking['peak_hour_factor']
+            
+            # Calculate delta with randomness
+            target_occupied = int(base_occupancy)
+            delta = target_occupied - current_occupied
+            
+            # Add randomness to the delta
+            randomness = int(capacity * random.uniform(-0.03, 0.03) * parking['volatility'])
+            delta += randomness
+            
+            # Dampen large swings
+            if abs(delta) > capacity * 0.1:
+                delta = int(delta * 0.5)
+            
+            # Apply change but ensure we stay within bounds
+            new_occupied = max(0, min(current_occupied + delta, capacity))
+            new_free = capacity - new_occupied
+            
+            parking['occupied_spots'] = new_occupied
+            parking['free_spots'] = new_free
+            
+        return self.parkings
+
+def run_simulator():
+    """Main function to run the parking simulator"""
+    # Initialize MQTT client
+    client = mqtt.Client()
+    client.on_connect = on_connect
+    client.on_disconnect = on_disconnect
+    
+    try:
+        client.connect(MQTT_HOST, MQTT_PORT, 60)
+        client.loop_start()
+        logger.info("MQTT client initialized")
+    except Exception as e:
+        logger.error(f"MQTT connection error: {e}")
+        exit(1)
+    
+    # Create parking simulator
+    simulator = ParkingSimulator(NUM_PARKINGS)
+    
+    # Main loop
+    cycle = 0
     while True:
         try:
-            logger.info("Attempting to reconnect...")
-            client.reconnect()
-            break
-        except Exception as e:
-            logger.error(f"Reconnection failed: {e}")
-            time.sleep(5)
-
-def init_parking_lots():
-    try:
-        with pg_conn.cursor() as cur:
-            # Создание таблицы, если она не существует
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS parking_lots (
-                    id SERIAL PRIMARY KEY,
-                    lat FLOAT NOT NULL,
-                    lon FLOAT NOT NULL,
-                    total_spots INTEGER
-                )
-            """)
-            # Проверка наличия столбца total_spots
-            cur.execute("""
-                SELECT column_name
-                FROM information_schema.columns
-                WHERE table_name = 'parking_lots' AND column_name = 'total_spots'
-            """)
-            if cur.fetchone() is None:
-                cur.execute("ALTER TABLE parking_lots ADD COLUMN total_spots INTEGER")
-            # Инициализация парковок
-            for device_id in range(1, 151):
-                cur.execute("SELECT total_spots FROM parking_lots WHERE id = %s", (device_id,))
-                row = cur.fetchone()
-                if row is None:
-                    lat = random.uniform(59.9, 60.0)
-                    lon = random.uniform(30.2, 30.4)
-                    total_spots = random.randint(10, 50)
-                    cur.execute(
-                        "INSERT INTO parking_lots (id, lat, lon, total_spots) VALUES (%s, %s, %s, %s)",
-                        (device_id, lat, lon, total_spots)
-                    )
-                elif row[0] is None:
-                    total_spots = random.randint(10, 50)
-                    cur.execute(
-                        "UPDATE parking_lots SET total_spots = %s WHERE id = %s",
-                        (total_spots, device_id)
-                    )
-            pg_conn.commit()
-            logger.info("Initialized parking_lots with 150 entries")
-    except Exception as e:
-        logger.error(f"Error initializing parking_lots: {str(e)}")
-        pg_conn.rollback()
-
-def init_bookings_table():
-    try:
-        with pg_conn.cursor() as cur:
-            # Создание таблицы, если она не существует
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS bookings (
-                    id SERIAL PRIMARY KEY,
-                    vehicle_id TEXT NOT NULL,
-                    parking_id INTEGER NOT NULL,
-                    spot_number INTEGER NOT NULL,
-                    active BOOLEAN NOT NULL DEFAULT TRUE,
-                    booked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            cur.execute("""
-                DO $$
-                BEGIN
-                    IF EXISTS (
-                        SELECT 1
-                        FROM pg_constraint
-                        WHERE conname = 'unique_booking'
-                    ) THEN
-                        ALTER TABLE bookings DROP CONSTRAINT unique_booking;
-                    END IF;
-                    IF NOT EXISTS (
-                        SELECT 1
-                        FROM pg_indexes
-                        WHERE indexname = 'unique_active_booking'
-                    ) THEN
-                        CREATE UNIQUE INDEX unique_active_booking ON bookings (parking_id, spot_number) WHERE active = true;
-                    END IF;
-                END $$;
-            """)
-            # Проверка наличия столбца booked_at
-            cur.execute("""
-                SELECT column_name
-                FROM information_schema.columns
-                WHERE table_name = 'bookings' AND column_name = 'booked_at'
-            """)
-            if cur.fetchone() is None:
-                cur.execute("ALTER TABLE bookings ADD COLUMN booked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
-            pg_conn.commit()
-            logger.info("Initialized bookings table")
-    except Exception as e:
-        logger.error(f"Error initializing bookings table: {str(e)}")
-        pg_conn.rollback()
-
-# def release_old_bookings():
-#     while True:
-#         try:
-#             conn = psycopg2.connect(dbname="parking", user="postgres", password="secret", host="postgresql")
-#             with conn.cursor() as cur:
-#                 cur.execute("""
-#                     UPDATE bookings
-#                     SET active = false
-#                     WHERE active = true AND booked_at < NOW() - INTERVAL '20 minutes'
-#                 """)
-#                 conn.commit()
-#                 logger.info("Released old bookings")
-#             conn.close()
-#         except Exception as e:
-#             logger.error(f"Error releasing old bookings: {e}")
-#         time.sleep(1200)
-
-data_simulator_client = mqtt.Client()
-data_simulator_client.on_connect = on_connect
-data_simulator_client.on_disconnect = on_disconnect
-try:
-    data_simulator_client.connect(MQTT_HOST, MQTT_PORT)
-except Exception as e:
-    logger.error(f"Failed to connect to MQTT broker: {e}")
-    exit(1)
-
-init_parking_lots()
-init_bookings_table()
-
-# Запуск потока для освобождения старых бронирований
-# release_thread = threading.Thread(target=release_old_bookings)
-# release_thread.start()
-
-while True:
-    for device_id in range(1, 151):
-        # time.sleep(random.uniform(1, 10))
-        try:
-            with pg_conn.cursor() as cur:
-                cur.execute("SELECT total_spots FROM parking_lots WHERE id = %s", (device_id,))
-                total_spots = cur.fetchone()[0]
-                cur.execute("SELECT COUNT(*) FROM bookings WHERE parking_id = %s AND active = true", (device_id,))
-                booked_spots = cur.fetchone()[0]
-                free_spots = total_spots - booked_spots
-                if free_spots < 0:
-                    free_spots = 0
-                data_controller = {
-                    "device_id": device_id,
-                    "free_spots": free_spots,
+            cycle += 1
+            start_time = time.time()
+            
+            # Update parking lots
+            parking_lots = simulator.update()
+            
+            # Log current time trend
+            trend, is_weekend = simulator.get_occupancy_trend()
+            if cycle % 4 == 0:  # Log every 4 cycles
+                day_type = "weekend" if is_weekend else "weekday"
+                logger.info(f"Current occupancy trend: {trend:.2f} ({day_type}, {datetime.now().hour:02d}:{datetime.now().minute:02d})")
+            
+            # Publish data for each parking
+            for parking in parking_lots:
+                # Prepare data
+                data = {
+                    "device_id": parking['id'],
+                    "free_spots": parking['free_spots'],
+                    "total_capacity": parking['capacity'],
+                    "occupied_spots": parking['occupied_spots'],
                     "timestamp": int(time.time() * 1e9)
                 }
-                payload_controller = json.dumps(data_controller)
-                data_simulator_client.publish(MQTT_TOPIC, payload_controller)
+                
+                # Convert to JSON and publish
+                payload = json.dumps(data)
+                client.publish(MQTT_TOPIC, payload)
+                
+                # Log some data for verification
+                if parking['id'] % 30 == 0:  # Log every 30th parking
+                    occupancy_percent = (parking['occupied_spots'] / parking['capacity']) * 100
+                    logger.info(f"Parking {parking['id']}: {parking['free_spots']} free, {parking['occupied_spots']} occupied, {occupancy_percent:.1f}% full")
+            
+            # Ensure consistent timing between updates
+            elapsed = time.time() - start_time
+            sleep_time = max(1, UPDATE_INTERVAL - elapsed)  # At least 1 second
+            time.sleep(sleep_time)
+            
         except Exception as e:
-            logger.error(f"Error calculating free spots for device {device_id}: {e}")
-    time.sleep(15)
+            logger.error(f"Error in simulator loop: {e}")
+            time.sleep(5)
+
+if __name__ == "__main__":
+    logger.info("Parking occupancy simulator starting")
+    run_simulator()
