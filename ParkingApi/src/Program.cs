@@ -36,6 +36,72 @@ builder.Services.AddStackExchangeRedisCache(options =>
 // Add custom cache service
 builder.Services.AddScoped<ICacheService, RedisCacheService>();
 
+// Проверяем наличие переменной окружения USE_MOCK_DATA
+var useMockData = Environment.GetEnvironmentVariable("USE_MOCK_DATA")?.ToLower() == "true";
+
+if (useMockData)
+{
+    Console.WriteLine("MOCK DATA MODE: Using mock database service");
+    builder.Services.AddSingleton<PostgresService>(sp =>
+    {
+        var logger = sp.GetRequiredService<ILogger<PostgresService>>();
+        logger.LogWarning("Using mock database configuration. No real database connection will be established.");
+
+        // Передаем заглушки вместо реальных строк подключения
+        return new PostgresService(
+            "mock-connection-master",
+            "mock-connection-replica",
+            "mock-connection-shard1",
+            "mock-connection-shard2",
+            logger);
+    });
+}
+else
+{
+    // Configure services to read from configuration
+    builder.Services.AddSingleton<PostgresService>(sp =>
+    {
+        var logger = sp.GetRequiredService<ILogger<PostgresService>>();
+        var configuration = sp.GetRequiredService<IConfiguration>();
+
+        // Получаем строки подключения или используем fallback значения
+        var masterConnection = configuration["DB_CONNECTION_STRING"] ??
+            Environment.GetEnvironmentVariable("DB_CONNECTION_STRING");
+
+        if (string.IsNullOrEmpty(masterConnection))
+        {
+            logger.LogCritical("DB_CONNECTION_STRING is missing! Using fallback mode.");
+            masterConnection = "Host=postgresql;Port=5432;Database=parking;Username=postgres;Password=secret";
+        }
+
+        var replicaConnection = configuration["DB_REPLICA_CONNECTION_STRING"] ??
+            Environment.GetEnvironmentVariable("DB_REPLICA_CONNECTION_STRING") ??
+            masterConnection;
+
+        var spotsShardConnection = configuration["SHARD_1_CONNECTION_STRING"] ??
+            Environment.GetEnvironmentVariable("SHARD_1_CONNECTION_STRING") ??
+            "Host=postgres-shard-1;Port=5432;Database=parking_spots;Username=postgres;Password=secret";
+
+        var bookingsShardConnection = configuration["SHARD_2_CONNECTION_STRING"] ??
+            Environment.GetEnvironmentVariable("SHARD_2_CONNECTION_STRING") ??
+            "Host=postgres-shard-2;Port=5432;Database=parking_bookings;Username=postgres;Password=secret";
+
+        // Логирование для отладки
+        logger.LogInformation("Configuring PostgresService with connections:");
+        logger.LogInformation($"Master: {masterConnection.Substring(0, Math.Min(20, masterConnection.Length))}...");
+        logger.LogInformation($"Replica: {replicaConnection.Substring(0, Math.Min(20, replicaConnection.Length))}...");
+        logger.LogInformation($"Spots Shard: {spotsShardConnection.Substring(0, Math.Min(20, spotsShardConnection.Length))}...");
+        logger.LogInformation($"Bookings Shard: {bookingsShardConnection.Substring(0, Math.Min(20, bookingsShardConnection.Length))}...");
+
+        return new PostgresService(
+            masterConnection,
+            replicaConnection,
+            spotsShardConnection,
+            bookingsShardConnection,
+            logger);
+    });
+}
+
 // Configure services to read from configuration
 builder.Services.AddSingleton<InfluxDbService>(sp =>
 {
@@ -44,13 +110,6 @@ builder.Services.AddSingleton<InfluxDbService>(sp =>
     var token = configuration["InfluxDB:Token"] ?? "super-secret-token";
     var org = configuration["InfluxDB:Org"] ?? "iot_org";
     return new InfluxDbService(connectionString, token, org);
-});
-
-builder.Services.AddSingleton<PostgresService>(sp =>
-{
-    var configuration = sp.GetRequiredService<IConfiguration>();
-    var connectionString = configuration.GetConnectionString("PostgreSQL") ?? "Host=postgresql;Database=parking;Username=postgres;Password=secret";
-    return new PostgresService(connectionString);
 });
 
 builder.Logging.ClearProviders();

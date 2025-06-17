@@ -53,14 +53,22 @@ public class ParkingController : ControllerBase
                     _logger.LogInformation("Cache miss for {CacheKey}, querying from database", cacheKey);
 
                     _logger.LogInformation("Starting query to InfluxDB");
+
+                    // Улучшенный запрос к InfluxDB, который получает последние данные для каждого устройства
                     string query = @"from(bucket:""iot_bucket"") 
                                     |> range(start: -1h) 
-                                    |> filter(fn: (r) => r._measurement == ""parking_data"")";
+                                    |> filter(fn: (r) => r._measurement == ""parking_data"")
+                                    |> filter(fn: (r) => r._field == ""free_spots"")
+                                    |> group(columns: [""device_id""])
+                                    |> last()";
+
                     var result = await _influxDbService.QueryAsync(query);
                     var fetchedParkingLots = new List<ParkingStatus>();
 
                     foreach (var table in result)
                     {
+                        _logger.LogInformation("Processing InfluxDB table with {RecordCount} records", table.Records.Count);
+
                         foreach (var record in table.Records)
                         {
                             string? deviceIdStr = record.GetValueByKey("device_id")?.ToString();
@@ -101,36 +109,84 @@ public class ParkingController : ControllerBase
                         }
                     }
 
-                    // Если нет данных из InfluxDB и это тестовая среда, предоставляем резервные данные
+                    // Если нет данных из InfluxDB, расширяем временной диапазон до 24 часов
                     if (fetchedParkingLots.Count == 0)
                     {
-                        // Проверяем, есть ли данные PostgreSQL (указывает на настройку тестовой среды)
-                        var testLocation1 = await _postgresService.GetParkingLotLocationAsync(1);
-                        var testLocation2 = await _postgresService.GetParkingLotLocationAsync(2);
+                        _logger.LogWarning("No data found in InfluxDB for the last hour, trying with extended time range.");
+                        query = @"from(bucket:""iot_bucket"") 
+                                |> range(start: -24h) 
+                                |> filter(fn: (r) => r._measurement == ""parking_data"")
+                                |> filter(fn: (r) => r._field == ""free_spots"")
+                                |> group(columns: [""device_id""])
+                                |> last()";
 
-                        if (testLocation1.HasValue)
+                        result = await _influxDbService.QueryAsync(query);
+
+                        foreach (var table in result)
+                        {
+                            _logger.LogInformation("Extended time: Processing InfluxDB table with {RecordCount} records", table.Records.Count);
+
+                            foreach (var record in table.Records)
+                            {
+                                string? deviceIdStr = record.GetValueByKey("device_id")?.ToString();
+                                if (string.IsNullOrEmpty(deviceIdStr) || !int.TryParse(deviceIdStr, out int deviceId))
+                                {
+                                    _logger.LogWarning($"Skipping record due to invalid device_id: {record}");
+                                    continue;
+                                }
+                                object freeSpotsObj = record.GetValue();
+                                if (freeSpotsObj == null || !int.TryParse(freeSpotsObj.ToString(), out int freeSpots))
+                                {
+                                    _logger.LogWarning($"Skipping record due to invalid free_spots: {record}");
+                                    continue;
+                                }
+
+                                // Кэшируем местоположение парковки
+                                var locationCacheKey = $"parking:location:{deviceId}";
+                                var location = await _cacheService.GetOrCreateAsync(
+                                    locationCacheKey,
+                                    () => _postgresService.GetParkingLotLocationAsync(deviceId),
+                                    TimeSpan.FromMinutes(30) // Местоположение меняется редко
+                                );
+
+                                if (location.HasValue)
+                                {
+                                    fetchedParkingLots.Add(new ParkingStatus
+                                    {
+                                        Id = deviceId,
+                                        FreeSpots = freeSpots,
+                                        Lat = location.Value.lat,
+                                        Lon = location.Value.lon
+                                    });
+                                }
+                                else
+                                {
+                                    _logger.LogWarning($"No metadata found in PostgreSQL for device_id: {deviceId}");
+                                }
+                            }
+                        }
+                    }
+
+                    // Если до сих пор нет данных, запрашиваем все данные из PostgreSQL
+                    if (fetchedParkingLots.Count == 0)
+                    {
+                        _logger.LogWarning("No data found in InfluxDB, loading parking lot data from PostgreSQL");
+
+                        // Изменено: используем GetParkingLotsAsync вместо GetAllParkingLotsAsync
+                        var allParkingLots = await _postgresService.GetParkingLotsAsync();
+
+                        foreach (var lot in allParkingLots)
                         {
                             fetchedParkingLots.Add(new ParkingStatus
                             {
-                                Id = 1,
-                                FreeSpots = 5, // Default test value
-                                Lat = testLocation1.Value.lat,
-                                Lon = testLocation1.Value.lon
+                                Id = lot.Id,
+                                FreeSpots = lot.Capacity / 2, // Примерное значение, половина от емкости
+                                Lat = lot.Latitude,           // Изменено: используем Latitude вместо Lat
+                                Lon = lot.Longitude           // Изменено: используем Longitude вместо Lon
                             });
-                            _logger.LogInformation("Added fallback data for parking lot 1");
                         }
 
-                        if (testLocation2.HasValue)
-                        {
-                            fetchedParkingLots.Add(new ParkingStatus
-                            {
-                                Id = 2,
-                                FreeSpots = 3, // Default test value
-                                Lat = testLocation2.Value.lat,
-                                Lon = testLocation2.Value.lon
-                            });
-                            _logger.LogInformation("Added fallback data for parking lot 2");
-                        }
+                        _logger.LogInformation("Loaded {Count} parking lots from PostgreSQL as fallback", allParkingLots.Count);
                     }
 
                     // Если указаны координаты и радиус, фильтруем по расстоянию
@@ -181,28 +237,36 @@ public class ParkingController : ControllerBase
     {
         try
         {
+            // Исправление: проверка имени свойства в BookingRequest
+            // Если в запросе используется "spotnumber" вместо "spotNumber",
+            // нужно модифицировать класс модели
+            if (string.IsNullOrEmpty(booking.VehicleId))
+            {
+                return BadRequest("Vehicle ID is required");
+            }
+
+            if (booking.SpotNumber <= 0)
+            {
+                return BadRequest("Invalid spot number");
+            }
+
+            _logger.LogInformation($"Booking spot {booking.SpotNumber} at parking {parkingId} for vehicle {booking.VehicleId}");
+
+            // Проверяем, не занято ли уже это место
             bool isBooked = await _postgresService.IsSpotBookedAsync(parkingId, booking.SpotNumber);
             if (isBooked)
             {
-                return BadRequest("Spot already booked");
+                return Conflict($"Spot {booking.SpotNumber} at parking {parkingId} is already booked");
             }
 
+            // Бронируем место
             int bookingId = await _postgresService.BookSpotAsync(booking.VehicleId, parkingId, booking.SpotNumber);
 
-            // Инвалидируем кэш после успешного бронирования
+            // Очищаем кэш статуса парковок
             await _cacheService.RemoveAsync($"parking:status");
-            // Инвалидируем кэши с геолокацией (если они есть)
-            await _cacheService.RemoveByPrefixAsync("parking:status:geo:");
+            await _cacheService.RemoveAsync($"parking:status:geo:*");
 
-            // Обновляем кэш для конкретной парковки
-            await _cacheService.RemoveAsync($"parking:spot:{parkingId}");
-
-            return Ok(new { booking_id = bookingId, status = "success" });
-        }
-        catch (Npgsql.PostgresException pex) when (pex.SqlState == "23505")
-        {
-            _logger.LogWarning("Spot already booked during insertion for parkingId: {ParkingId}, spotNumber: {SpotNumber}", parkingId, booking.SpotNumber);
-            return BadRequest("Spot already booked");
+            return Ok(new { BookingId = bookingId });
         }
         catch (Exception ex)
         {
@@ -211,153 +275,235 @@ public class ParkingController : ControllerBase
         }
     }
 
+    [HttpGet("bookings")]
+    public async Task<ActionResult<IEnumerable<BookingInfo>>> GetActiveBookings([FromQuery] int? parkingId = null)
+    {
+        try
+        {
+            var bookings = await _postgresService.GetAllActiveBookingsAsync(parkingId);
+
+            // Enrich the response with parking location data
+            var enrichedBookings = new List<object>();
+
+            foreach (var booking in bookings)
+            {
+                var location = await _postgresService.GetParkingLotLocationAsync(booking.ParkingId);
+
+                enrichedBookings.Add(new
+                {
+                    booking.BookingId,
+                    booking.VehicleId,
+                    booking.ParkingId,
+                    booking.SpotNumber,
+                    booking.BookingTime,
+                    booking.Active,
+                    Location = location.HasValue ? new { Lat = location.Value.lat, Lon = location.Value.lon } : null
+                });
+            }
+
+            return Ok(enrichedBookings);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving active bookings");
+            return StatusCode(500, $"Error retrieving active bookings: {ex.Message}");
+        }
+    }
+
+    [HttpDelete("bookings/all")]
+    public async Task<ActionResult> DeleteAllBookings([FromQuery] string confirmationCode)
+    {
+        try
+        {
+            // Проверка кода подтверждения для защиты от случайного удаления
+            if (confirmationCode != "DELETE_ALL_CONFIRM")
+            {
+                return BadRequest("Incorrect confirmation code. Use 'DELETE_ALL_CONFIRM' to confirm this dangerous operation.");
+            }
+
+            int deletedCount = await _postgresService.ClearAllBookingsAsync();
+
+            // Очищаем кэш статуса парковок
+            await _cacheService.RemoveAsync($"parking:status");
+            await _cacheService.RemoveAsync($"parking:status:geo:*");
+
+            return Ok(new
+            {
+                Message = "All bookings have been deleted",
+                DeletedCount = deletedCount
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting all bookings");
+            return StatusCode(500, $"Error deleting all bookings: {ex.Message}");
+        }
+    }
+
     [HttpGet("{parkingId}/route")]
     public async Task<ActionResult> GetRoute(int parkingId)
     {
         try
         {
-            // Кэшируем данные о маршруте к парковке
-            var cacheKey = $"parking:route:{parkingId}";
-
-            var routeData = await _cacheService.GetOrCreateAsync(
-                cacheKey,
-                async () =>
-                {
-                    var location = await _postgresService.GetParkingLotLocationAsync(parkingId);
-                    if (!location.HasValue)
-                    {
-                        return null;
-                    }
-                    return new { id = parkingId, lat = location.Value.lat, lon = location.Value.lon };
-                },
-                TimeSpan.FromMinutes(30) // Маршруты меняются редко
-            );
-
-            if (routeData == null)
+            // Получаем координаты парковки
+            var location = await _postgresService.GetParkingLotLocationAsync(parkingId);
+            if (!location.HasValue)
             {
-                return NotFound("Parking lot not found");
+                return NotFound($"Parking lot with id {parkingId} not found");
             }
 
-            return Ok(routeData);
+            // В реальном приложении здесь был бы запрос к картографическому сервису
+            // Для примера просто возвращаем координаты и заглушку для маршрута
+            return Ok(new
+            {
+                ParkingId = parkingId,
+                Destination = new { Lat = location.Value.lat, Lon = location.Value.lon },
+                RoutePoints = new[]
+                {
+                    new { Lat = location.Value.lat - 0.01, Lon = location.Value.lon - 0.01 },
+                    new { Lat = location.Value.lat - 0.005, Lon = location.Value.lon - 0.005 },
+                    new { Lat = location.Value.lat, Lon = location.Value.lon }
+                }
+            });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting route");
+            _logger.LogError(ex, "Error getting route to parking {ParkingId}", parkingId);
             return StatusCode(500, $"Error getting route: {ex.Message}");
         }
     }
 
-    [HttpDelete("{bookingId}")]
+    [HttpDelete("booking/{bookingId}")]
     public async Task<ActionResult> DeleteBooking(int bookingId)
     {
         try
         {
-            _logger.LogInformation("Attempting to delete booking with ID: {BookingId}", bookingId);
-
-            // Получаем информацию о бронировании перед удалением для инвалидации кэша
-            var bookingInfo = await _postgresService.GetBookingInfoAsync(bookingId);
-
-            bool deleted = await _postgresService.DeleteBookingAsync(bookingId);
-            if (!deleted)
+            bool result = await _postgresService.DeleteBookingAsync(bookingId);
+            if (result)
             {
-                _logger.LogWarning("Booking not found for deletion with ID: {BookingId}", bookingId);
-                return NotFound("Booking not found");
-            }
-
-            _logger.LogInformation("Booking deleted successfully with ID: {BookingId}", bookingId);
-
-            // Инвалидация кэша после удаления бронирования
-            if (bookingInfo != null)
-            {
+                // Очищаем кэш статуса парковок
                 await _cacheService.RemoveAsync($"parking:status");
-                await _cacheService.RemoveByPrefixAsync("parking:status:geo:");
-                await _cacheService.RemoveAsync($"parking:spot:{bookingInfo.ParkingId}");
-            }
+                await _cacheService.RemoveAsync($"parking:status:geo:*");
 
-            return Ok("Booking deleted successfully");
+                return Ok(new { Status = "Booking cancelled" });
+            }
+            else
+            {
+                return NotFound($"Booking with id {bookingId} not found or already inactive");
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error deleting booking with ID: {BookingId}", bookingId);
-            return StatusCode(500, $"Error deleting booking: {ex.Message}");
+            _logger.LogError(ex, "Error cancelling booking {BookingId}", bookingId);
+            return StatusCode(500, $"Error cancelling booking: {ex.Message}");
         }
     }
 
-    [HttpPut("{bookingId}")]
+    [HttpPut("booking/{bookingId}")]
     public async Task<ActionResult> UpdateBooking(int bookingId, [FromBody] BookingUpdateRequest request)
     {
         try
         {
-            if (request == null || string.IsNullOrEmpty(request.VehicleId))
+            bool result = await _postgresService.UpdateBookingAsync(bookingId, request.VehicleId, request.Active);
+            if (result)
             {
-                _logger.LogWarning("Invalid request data for updating booking with ID: {BookingId}", bookingId);
-                return BadRequest("Invalid request data");
-            }
-
-            _logger.LogInformation("Attempting to update booking with ID: {BookingId}", bookingId);
-
-            // Получаем информацию о бронировании перед обновлением для инвалидации кэша
-            var bookingInfo = await _postgresService.GetBookingInfoAsync(bookingId);
-
-            bool updated = await _postgresService.UpdateBookingAsync(bookingId, request.VehicleId, request.Active);
-            if (!updated)
-            {
-                _logger.LogWarning("Booking not found for update with ID: {BookingId}", bookingId);
-                return NotFound("Booking not found");
-            }
-
-            _logger.LogInformation("Booking updated successfully with ID: {BookingId}", bookingId);
-
-            // Инвалидация кэша после обновления бронирования
-            if (bookingInfo != null)
-            {
+                // Очищаем кэш статуса парковок
                 await _cacheService.RemoveAsync($"parking:status");
-                await _cacheService.RemoveByPrefixAsync("parking:status:geo:");
-                await _cacheService.RemoveAsync($"parking:spot:{bookingInfo.ParkingId}");
-            }
+                await _cacheService.RemoveAsync($"parking:status:geo:*");
 
-            return Ok("Booking updated successfully");
+                return Ok(new { Status = "Booking updated" });
+            }
+            else
+            {
+                return NotFound($"Booking with id {bookingId} not found");
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error updating booking with ID: {BookingId}", bookingId);
+            _logger.LogError(ex, "Error updating booking {BookingId}", bookingId);
             return StatusCode(500, $"Error updating booking: {ex.Message}");
         }
     }
 
-    // Новый метод для получения детальной информации о парковочном месте с кэшированием
-    [HttpGet("spot/{spotId}")]
-    public async Task<ActionResult> GetParkingSpotDetails(int spotId)
+    [HttpGet("spot/{parkingId}/{spotNumber}")]
+    public async Task<ActionResult> GetParkingSpotDetails(int parkingId, int spotNumber)
     {
         try
         {
-            var cacheKey = $"parking:spot:{spotId}";
-
-            var spotDetails = await _cacheService.GetOrCreateAsync(
-                cacheKey,
-                async () =>
-                {
-                    var details = await _postgresService.GetParkingSpotDetailsAsync(spotId);
-                    if (details == null)
-                    {
-                        return null;
-                    }
-                    return details;
-                },
-                TimeSpan.FromMinutes(1) // Кэшируем на 1 минуту
-            );
-
-            if (spotDetails == null)
+            var details = await _postgresService.GetParkingSpotDetailsAsync(parkingId, spotNumber);
+            if (details != null)
             {
-                return NotFound("Parking spot not found");
+                return Ok(details);
             }
-
-            return Ok(spotDetails);
+            else
+            {
+                return NotFound($"Spot {spotNumber} at parking {parkingId} not found");
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting parking spot details");
+            _logger.LogError(ex, "Error getting parking spot details for spot {SpotNumber} at parking {ParkingId}", spotNumber, parkingId);
             return StatusCode(500, $"Error getting parking spot details: {ex.Message}");
+        }
+    }
+
+    [HttpGet("booking/{bookingId}")]
+    public async Task<ActionResult> GetBookingDetails(int bookingId)
+    {
+        try
+        {
+            var bookingInfo = await _postgresService.GetBookingInfoAsync(bookingId);
+            if (bookingInfo != null)
+            {
+                return Ok(bookingInfo);
+            }
+            else
+            {
+                return NotFound($"Booking with id {bookingId} not found");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting booking details for booking {BookingId}", bookingId);
+            return StatusCode(500, $"Error getting booking details: {ex.Message}");
+        }
+    }
+
+    [HttpPost("bookall")]
+    public async Task<ActionResult> BookAllSpots([FromBody] BookAllRequest request, [FromQuery] int? parkingId = null)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(request.VehicleId))
+            {
+                return BadRequest("Vehicle ID is required");
+            }
+
+            // Проверка кода подтверждения для защиты от случайного бронирования
+            if (request.ConfirmationCode != "BOOK_ALL_CONFIRM")
+            {
+                return BadRequest("Incorrect confirmation code. Use 'BOOK_ALL_CONFIRM' to confirm this operation.");
+            }
+
+            string parkingScope = parkingId.HasValue ? $"for parking {parkingId}" : "across all parking lots";
+            _logger.LogWarning($"Request to book ALL available spots {parkingScope} for vehicle {request.VehicleId}");
+
+            int bookedCount = await _postgresService.BookAllAvailableSpotsAsync(request.VehicleId, parkingId);
+
+            // Очищаем кэш статуса парковок
+            await _cacheService.RemoveAsync($"parking:status");
+            await _cacheService.RemoveAsync($"parking:status:geo:*");
+
+            return Ok(new
+            {
+                Message = $"Booking process completed for all available spots {parkingScope}",
+                BookedCount = bookedCount
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error booking all spots");
+            return StatusCode(500, $"Error booking all spots: {ex.Message}");
         }
     }
 }
