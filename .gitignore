@@ -24,6 +24,7 @@ x86/
 *.mdf
 *.ldf
 *.ndf
+*.db
 postgresql/data/
 postgresql/master-data/
 postgresql/replica1-data/
@@ -33,7 +34,6 @@ postgresql/shard2-data/
 influxdb/data/
 
 # Grafana & Monitoring
-monitoring/grafana/data/
 prometheus/data/
 mosquitto/data/
 mosquitto/log/
